@@ -118,6 +118,8 @@ def test_concurrent_identical_requests_deduplicate_to_one_build(cache, ref_param
     pool = CountingPool(size=2)
     try:
         jobs = JobManager(cache=cache, pool=pool)
+        # four identical requests attach to one build, so none of them is a
+        # second build and none consumes an extra concurrency slot
         with TestClient(create_app(cache=cache, warm=False, jobs=jobs)) as client:
             results: list[dict] = []
             barrier = threading.Barrier(4)
@@ -132,6 +134,7 @@ def test_concurrent_identical_requests_deduplicate_to_one_build(cache, ref_param
             for thread in threads:
                 thread.join(timeout=120)
 
+            assert all("id" in r for r in results), f"a request was refused: {results}"
             assert len({r["id"] for r in results}) == 1, "requests did not deduplicate to one job"
             assert poll(client, results[0]["id"])["state"] == "complete"
             assert CountingPool.builds == 1, f"{CountingPool.builds} builds ran, expected 1"

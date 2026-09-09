@@ -12,10 +12,16 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import asyncio
+import json as _json
+import queue as _queue
+import threading
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 
 from traymold.api import apply_options, environment, json_schema, defaults, validate as core_validate
 from traymold.presets import PRESETS
@@ -23,8 +29,11 @@ from traymold.version import MODEL_VERSION, SCHEMA_VERSION
 
 from .cache import ArtifactCache
 from .jobs import DEFAULT_FORMATS, Job, JobManager
+from .limits import RateLimiter
+from .settings import SETTINGS
 from .models import (
     ArtifactModel,
+    HealthResponse,
     BuildRequest,
     JobResponse,
     PresetSummary,
@@ -48,20 +57,79 @@ PRESET_TITLES = {
 }
 
 
-def create_app(cache: ArtifactCache | None = None, warm: bool = True, jobs: JobManager | None = None) -> FastAPI:
+def create_app(
+    cache: ArtifactCache | None = None,
+    warm: bool = True,
+    jobs: JobManager | None = None,
+    limiter: RateLimiter | None = None,
+    sweep: bool = True,
+) -> FastAPI:
+    stop_sweeper = threading.Event()
+
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
+    async def lifespan(app_: FastAPI):
         if warm:
             # pre-import the geometry core in the workers: 3.1 s once at startup
             # rather than on the first request, where it would dominate a preview
             get_pool()
+        sweeper = None
+        if sweep:
+            sweeper = threading.Thread(target=_sweep_loop, args=(app_, stop_sweeper), daemon=True)
+            sweeper.start()
         yield
+        stop_sweeper.set()
+        if sweeper is not None:
+            sweeper.join(timeout=2.0)
         shutdown_pool()
 
     app = FastAPI(title="traymold API", version=API_VERSION, lifespan=lifespan)
+    app.state.limiter = limiter or RateLimiter()
     app.state.jobs = jobs or JobManager(cache=cache)
+    app.state.jobs.on_finish = lambda job: (
+        app.state.limiter.release(job.client) if job.client else None
+    )
+    app.state.started_at = time.time()
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(SETTINGS.allowed_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["content-type"],
+    )
+
+    @app.middleware("http")
+    async def limit_body_size(request: Request, call_next):
+        """A parameter document is a few kB.  Reject anything absurd before it is
+        read, rather than buffering it to find out."""
+        declared = request.headers.get("content-length")
+        if declared is not None and int(declared) > SETTINGS.max_request_bytes:
+            return Response(
+                content=_json.dumps({"detail": "request body too large"}),
+                status_code=413, media_type="application/json",
+            )
+        return await call_next(request)
 
     # -- metadata ----------------------------------------------------------
+    @app.get("/api/health", response_model=HealthResponse)
+    def health() -> HealthResponse:
+        """Lightweight: no geometry, no worker round-trip.  Reports whether a
+        pool exists and how many workers are idle right now."""
+        pool = _peek_pool()
+        return HealthResponse(
+            status="ok",
+            api_version=API_VERSION,
+            uptime_s=round(time.time() - app.state.started_at, 1),
+            workers={
+                "configured": SETTINGS.workers,
+                "started": pool.spawned if pool else 0,
+                "idle": pool.idle_count if pool else 0,
+                "pool_ready": pool is not None,
+            },
+            cache=app.state.jobs.cache.stats().as_dict(),
+            limits=app.state.limiter.snapshot(),
+        )
+
     @app.get("/api/version", response_model=VersionResponse)
     def version() -> VersionResponse:
         env = environment()
@@ -104,12 +172,31 @@ def create_app(cache: ArtifactCache | None = None, warm: bool = True, jobs: JobM
 
     # -- jobs --------------------------------------------------------------
     @app.post("/api/preview", response_model=JobResponse, status_code=202)
-    def preview(request: BuildRequest, response: Response) -> JobResponse:
-        return _submit(app, "preview", request, response)
+    def preview(request: BuildRequest, response: Response, http: Request) -> JobResponse:
+        return _submit(app, "preview", request, response, _client(http))
 
     @app.post("/api/export", response_model=JobResponse, status_code=202)
-    def export(request: BuildRequest, response: Response) -> JobResponse:
-        return _submit(app, "export", request, response)
+    def export(request: BuildRequest, response: Response, http: Request) -> JobResponse:
+        return _submit(app, "export", request, response, _client(http))
+
+    @app.get("/api/jobs/{job_id}/events")
+    async def job_events(job_id: str):
+        """Server-sent events for one job.
+
+        The job manager pushes on every state transition, so the browser learns
+        that a build finished the instant the worker returns - no polling loop on
+        either side.  `GET /api/jobs/{id}` remains the fallback for a dropped
+        connection or an API restart.
+        """
+        found = app.state.jobs.get(job_id)
+        if found is None:
+            raise HTTPException(status_code=404, detail="unknown job")
+        return StreamingResponse(
+            _event_stream(app.state.jobs, found),
+            media_type="text/event-stream",
+            headers={"cache-control": "no-cache", "x-accel-buffering": "no",
+                     "connection": "keep-alive"},
+        )
 
     @app.get("/api/jobs/{job_id}", response_model=JobResponse)
     def job(job_id: str) -> JobResponse:
@@ -158,7 +245,58 @@ def _effective(request: ValidateRequest):
     return apply_options(request.params, request.quality, parts)
 
 
-def _submit(app: FastAPI, kind: str, request: BuildRequest, response: Response) -> JobResponse:
+TERMINAL = ("complete", "failed", "cancelled")
+HEARTBEAT_S = 15.0
+
+
+async def _event_stream(jobs: JobManager, job: Job):
+    channel = jobs.subscribe(job.id)
+    try:
+        yield _sse(_job_response(job))
+        if job.terminal:
+            return
+        while True:
+            try:
+                updated = await asyncio.to_thread(channel.get, True, HEARTBEAT_S)
+            except _queue.Empty:
+                yield ": keep-alive\n\n"
+                continue
+            yield _sse(_job_response(updated))
+            if updated.state in TERMINAL:
+                return
+    finally:
+        jobs.unsubscribe(job.id, channel)
+
+
+def _sse(payload) -> str:
+    body = payload.model_dump_json() if hasattr(payload, "model_dump_json") else _json.dumps(payload)
+    state = payload.state if hasattr(payload, "state") else "update"
+    return f"event: {state}\ndata: {body}\n\n"
+
+
+def _client(http: Request) -> str:
+    forwarded = http.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return http.client.host if http.client else "unknown"
+
+
+def _peek_pool():
+    import trayapi.worker as worker_module
+
+    return worker_module._POOL
+
+
+def _sweep_loop(app: FastAPI, stop: threading.Event) -> None:
+    while not stop.wait(SETTINGS.cache_sweep_interval_s):
+        try:
+            app.state.jobs.cache.sweep()
+        except Exception:  # pragma: no cover
+            log.exception("cache sweep failed")
+
+
+def _submit(app: FastAPI, kind: str, request: BuildRequest, response: Response,
+            client: str = "unknown") -> JobResponse:
     effective = _effective(request.model_copy(update={"quality": request.quality or kind}))
     result = core_validate(effective)
     diagnostics = result.diagnostics + policy_diagnostics(effective, request.allow_experimental)
@@ -167,10 +305,31 @@ def _submit(app: FastAPI, kind: str, request: BuildRequest, response: Response) 
         raise HTTPException(status_code=422, detail={
             "error": {"kind": "validation_error", "message": "the parameters are not valid",
                       "diagnostics": diagnostics}})
-    job = app.state.jobs.submit(kind, effective, request.formats or DEFAULT_FORMATS[kind])
+    rate = app.state.limiter.check_rate(client)
+    if not rate.allowed:
+        raise _too_many(rate)
+
+    job = app.state.jobs.submit(kind, effective, request.formats or DEFAULT_FORMATS[kind], client)
     if job.state == "complete":
+        # a cache hit costs nothing and occupies no worker
         response.status_code = 200
+        return _job_response(job)
+    if job.waiters == 1:
+        # a genuinely new build; a request that attached to one already running
+        # occupies no extra worker and is not counted
+        slot = app.state.limiter.try_acquire(client)
+        if not slot.allowed:
+            app.state.jobs.cancel(job.id)
+            raise _too_many(slot)
     return _job_response(job)
+
+
+def _too_many(decision) -> HTTPException:
+    return HTTPException(
+        status_code=429,
+        detail={"error": {"kind": "rate_limited", "message": decision.reason, "diagnostics": []}},
+        headers={"retry-after": str(max(1, int(decision.retry_after_s)))},
+    )
 
 
 def _job_response(job: Job) -> JobResponse:

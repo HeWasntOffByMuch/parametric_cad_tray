@@ -12,6 +12,7 @@ either reads the cache or attaches to the in-flight job.
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
 import uuid
@@ -46,6 +47,8 @@ class Job:
     finished_at: float | None = None
     cancel: threading.Event = field(default_factory=threading.Event)
     waiters: int = 1
+    client: str | None = None
+    listeners: list = field(default_factory=list)
 
     @property
     def terminal(self) -> bool:
@@ -55,17 +58,21 @@ class Job:
 class JobManager:
     """In-process job registry.  One instance per API process."""
 
-    def __init__(self, cache: ArtifactCache | None = None, pool=None, timeout: float | None = None):
+    def __init__(self, cache: ArtifactCache | None = None, pool=None, timeout: float | None = None,
+                 on_finish=None):
         self.cache = cache or ArtifactCache()
         self._pool = pool
         self.timeout = timeout
+        #: called with the job when it reaches a terminal state; the app uses it
+        #: to release the submitting client's in-flight slot
+        self.on_finish = on_finish
         self._jobs: OrderedDict[str, Job] = OrderedDict()
         self._by_key: dict[str, str] = {}
         self._lock = threading.Lock()
         self._threads: list[threading.Thread] = []
 
     # -- submission --------------------------------------------------------
-    def submit(self, kind: str, effective_params, formats) -> Job:
+    def submit(self, kind: str, effective_params, formats, client: str | None = None) -> Job:
         """Return a job for this request, building only if nothing else will.
 
         Three outcomes, in order of preference: a cache hit (job is born
@@ -83,7 +90,8 @@ class JobManager:
             if cached is not None:
                 job = Job(id=_new_id(), kind=kind, cache_key=key, params_hash=digest,
                           state="complete", status="served from cache", cached=True,
-                          report=cached, started_at=time.time(), finished_at=time.time())
+                          report=cached, started_at=time.time(), finished_at=time.time(),
+                          client=client)
                 self._register(job)
                 return job
 
@@ -94,9 +102,11 @@ class JobManager:
                     existing.waiters += 1
                     return existing
 
-            job = Job(id=_new_id(), kind=kind, cache_key=key, params_hash=digest)
+            job = Job(id=_new_id(), kind=kind, cache_key=key, params_hash=digest, client=client)
             self._register(job)
             self._by_key[key] = job.id
+            # an entry a job is about to hand out must survive a cache sweep
+            self.cache.pin(key)
 
         payload = {
             "params": effective_params.model_dump(mode="json"),
@@ -126,6 +136,7 @@ class JobManager:
         job.state = "running"
         job.status = "building geometry"
         job.started_at = time.time()
+        self._emit(job)
         try:
             pool = self._pool or get_pool()
             dispatched = time.perf_counter()
@@ -156,6 +167,45 @@ class JobManager:
         with self._lock:
             if self._by_key.get(job.cache_key) == job.id:
                 self._by_key.pop(job.cache_key, None)
+        self.cache.unpin(job.cache_key)
+        if self.on_finish is not None:
+            try:
+                self.on_finish(job)
+            except Exception:  # pragma: no cover
+                log.exception("job completion hook failed")
+        self._emit(job)
+
+    # -- event streaming ---------------------------------------------------
+    def subscribe(self, job_id: str) -> "queue.Queue | None":
+        """A queue that receives every subsequent state change of this job.
+
+        Used by the SSE endpoint.  Pushing on transition rather than polling
+        means the browser sees `complete` the moment the worker returns.
+        """
+        job = self._jobs.get(job_id)
+        if job is None:
+            return None
+        channel: queue.Queue = queue.Queue()
+        with self._lock:
+            job.listeners.append(channel)
+        return channel
+
+    def unsubscribe(self, job_id: str, channel) -> None:
+        job = self._jobs.get(job_id)
+        if job is None:
+            return
+        with self._lock:
+            if channel in job.listeners:
+                job.listeners.remove(channel)
+
+    def _emit(self, job: Job) -> None:
+        with self._lock:
+            listeners = list(job.listeners)
+        for channel in listeners:
+            try:
+                channel.put_nowait(job)
+            except Exception:  # pragma: no cover
+                pass
 
     # -- queries -----------------------------------------------------------
     def get(self, job_id: str) -> Job | None:

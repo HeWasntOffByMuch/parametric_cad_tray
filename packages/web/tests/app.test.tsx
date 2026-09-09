@@ -1,0 +1,136 @@
+import { act, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { App } from '../src/App'
+import { FakeBackend, noEventSource } from './harness'
+
+let backend: FakeBackend
+
+/** Render and wait until the restored parameters have reached the form. */
+async function boot(props: any = {}) {
+  const view = render(<App options={{ autoPreview: false, validateDebounceMs: 0, previewIdleMs: 0, ...(props.options ?? {}) }} />)
+  await screen.findByRole('heading', { name: /leather tray mold/i })
+  await waitFor(() => expect(screen.getByLabelText('Length')).toHaveValue(175))
+  return view
+}
+
+/** Let the (zero-length) debounces and their promises settle. */
+async function settleValidation() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  })
+}
+
+beforeEach(() => {
+  window.localStorage.clear()
+  window.history.replaceState(null, '', '/')
+  backend = new FakeBackend()
+  backend.install()
+  noEventSource()
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('boot and form rendering', () => {
+  it('renders groups and fields from the served schema', async () => {
+    await boot()
+    for (const title of ['Shape', 'Dimensions', 'Leather & fit', 'Mold', 'Features', 'Manufacturing', 'Advanced']) {
+      expect(screen.getByRole('button', { name: new RegExp(title, 'i') })).toBeInTheDocument()
+    }
+    expect(screen.getByLabelText('Length')).toHaveValue(175)
+    expect(screen.getByLabelText('Width')).toHaveValue(105)
+    expect(screen.getByLabelText('Depth')).toHaveValue(25)
+    expect(screen.getByLabelText('Thickness')).toHaveValue(3)
+  })
+
+  it('shows the number input and a slider, with the number authoritative', async () => {
+    await boot()
+    expect(screen.getByLabelText('Length')).toHaveAttribute('type', 'number')
+    expect(screen.getByLabelText('Length slider')).toHaveAttribute('type', 'range')
+  })
+
+  it('renders derived values returned by the backend', async () => {
+    await boot()
+    await settleValidation()
+    await waitFor(() => expect(screen.getByTestId('derived-forming_gap')).toHaveTextContent('3.000 mm'))
+    expect(screen.getByTestId('derived-plate_length')).toHaveTextContent('235.0 mm')
+  })
+
+  it('reports an unreachable backend instead of rendering an empty form', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
+    render(<App options={{ autoPreview: false, validateDebounceMs: 0, previewIdleMs: 0 }} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cannot reach the geometry service/i)
+  })
+})
+
+describe('validation', () => {
+  it('validates on edit without building geometry', async () => {
+    const user = userEvent.setup()
+    await boot()
+    await settleValidation()
+    backend.validateCalls.length = 0
+
+    await user.clear(screen.getByLabelText('Length'))
+    await user.type(screen.getByLabelText('Length'), '200')
+    await settleValidation()
+
+    expect(backend.validateCalls.length).toBeGreaterThan(0)
+    expect(backend.previewCalls).toHaveLength(0)
+  })
+
+  it('renders a diagnostic next to its field and blocks preview', async () => {
+    backend.validateResponse = () => ({
+      valid: false,
+      diagnostics: [{ code: 'E-MOLD-040', severity: 'error', field: 'mold.cavity_plate_thickness',
+                      message: 'less than the draw depth; the plug would protrude' }],
+      derived: {}, params_hash: 'bad', schema_version: '2.0.0', model_version: '0.1.0',
+    })
+    await boot()
+    await settleValidation()
+
+    await waitFor(() => expect(screen.getAllByTestId('diag-E-MOLD-040').length).toBeGreaterThan(0))
+    expect(screen.getByTestId('diagnostics-panel')).toHaveTextContent('E-MOLD-040')
+    expect(screen.getByRole('button', { name: /update preview/i })).toBeDisabled()
+    expect(screen.getByTestId('export-button')).toBeDisabled()
+  })
+
+  it('a warning does not block preview', async () => {
+    backend.validateResponse = () => ({
+      valid: true,
+      diagnostics: [{ code: 'W-GAP-021', severity: 'warning', field: 'leather/fit', message: 'below FDM resolution' }],
+      derived: {}, params_hash: 'warn', schema_version: '2.0.0', model_version: '0.1.0',
+    })
+    await boot()
+    await settleValidation()
+    await waitFor(() => expect(screen.getByTestId('diagnostics-panel')).toHaveTextContent('W-GAP-021'))
+    expect(screen.getByRole('button', { name: /update preview/i })).toBeEnabled()
+  })
+})
+
+describe('unsupported and experimental parameters', () => {
+  it('offers the outer datum but disables it, with the reason visible', async () => {
+    await boot()
+    await userEvent.setup().click(
+      screen.getByRole('button', { name: /advanced/i }),
+    )
+    const datum = screen.getByLabelText('Datum') as HTMLSelectElement
+    const outer = within(datum).getByRole('option', { name: /outer/i }) as HTMLOptionElement
+    expect(outer).toBeDisabled()
+    expect(screen.getByText(/planned but not implemented/i)).toBeInTheDocument()
+  })
+
+  it('gates draft behind the experimental switch', async () => {
+    const user = userEvent.setup()
+    await boot()
+    await user.click(screen.getByRole('button', { name: /advanced/i }))
+
+    expect(screen.getByTestId('experimental-tray.draft_angle')).toHaveTextContent(/experimental/i)
+    expect(screen.getByTestId('experimental-tray.draft_angle')).toHaveTextContent(/cos\(draft angle\)/i)
+    expect(screen.getByLabelText('Draft Angle')).toBeDisabled()
+
+    await user.click(screen.getByLabelText('Enable experimental parameters'))
+    expect(screen.getByLabelText('Draft Angle')).toBeEnabled()
+  })
+})

@@ -1,0 +1,50 @@
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['packages/web/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/web/package-lock.json
+      - run: npm ci
+        working-directory: packages/web
+      - run: npm run test
+        working-directory: packages/web
+      # The build uses relative asset URLs, so the same output works at the
+      # domain root and under a repository path. Point it at the deployed API.
+      - run: npm run build
+        working-directory: packages/web
+        env:
+          VITE_API_BASE_URL: ${{ vars.TRAYMOLD_API_BASE_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 out/
 .pytest_cache/
+node_modules/
+dist/
+.cache/
+*.tsbuildinfo

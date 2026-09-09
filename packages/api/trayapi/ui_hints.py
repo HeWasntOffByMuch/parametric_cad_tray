@@ -1,36 +1,116 @@
-"""Presentation hints for the future parameter form.
+"""Presentation hints for the parameter form.
 
-These live beside the schema, not inside it: they are the only place the API is
-allowed to know anything about a UI, and nothing here reaches the geometry core.
+These live beside the schema, not inside it: the served JSON Schema is exactly
+what Pydantic generates, and this is the only place the backend is allowed to
+know anything about a UI.  Nothing here reaches the geometry core.
+
+The frontend renders groups in this order and puts anything unlisted into
+"Advanced", so adding a parameter to the core surfaces it in the UI without a
+frontend change.
 """
 
 UI_HINTS = {
     "groups": [
-        {"id": "tray", "title": "Tray", "fields": ["tray.profile", "tray.depth", "tray.datum"]},
-        {"id": "leather", "title": "Leather & fit",
-         "fields": ["leather.thickness", "leather.compression", "fit.clearance", "fit.gap_override"]},
-        {"id": "blends", "title": "Edge treatments",
-         "fields": ["mold.male_root_blend", "mold.male_floor_blend",
-                    "mold.female_entry_blend_top", "mold.female_entry_blend_bottom"]},
-        {"id": "mold", "title": "Mold construction",
-         "fields": ["mold.flange_width", "mold.base_plate_thickness", "mold.cavity_plate_thickness"]},
-        {"id": "features", "title": "Manufacturing features", "fields": ["features"]},
-        {"id": "advanced", "title": "Advanced", "fields": ["tray.draft_angle", "manufacturing", "quality"]},
-    ],
-    "fields": {
-        "tray.depth": {"unit": "mm", "step": 0.5},
-        "tray.draft_angle": {
-            "unit": "deg", "step": 0.5, "experimental": True,
-            "note": "The gap semantics under draft are undecided: the current build holds a "
-                    "constant profile-plane gap, so the normal gap is nominal * cos(draft). "
-                    "Requires allow_experimental.",
+        {
+            "id": "shape",
+            "title": "Shape",
+            "fields": ["tray.profile"],
+            "description": "The plan curve the tray is formed around.",
         },
-        "leather.thickness": {"unit": "mm", "step": 0.1},
-        "leather.compression": {"unit": "fraction", "step": 0.01},
-        "fit.clearance": {"unit": "mm", "step": 0.05},
-        "mold.flange_width": {"unit": "mm", "step": 1.0},
-        "mold.base_plate_thickness": {"unit": "mm", "step": 1.0},
-        "mold.cavity_plate_thickness": {"unit": "mm", "step": 1.0},
-        "tray.datum": {"unsupported_values": {"outer": "E-DATUM-001"}},
+        {
+            "id": "dimensions",
+            "title": "Dimensions",
+            "fields": ["tray.profile.length", "tray.profile.width", "tray.depth"],
+            "description": "Inside dimensions of the finished tray, in millimetres.",
+        },
+        {
+            "id": "leather",
+            "title": "Leather & fit",
+            "fields": ["leather.thickness", "leather.compression",
+                       "fit.clearance", "fit.gap_override"],
+            "description": "Together these set the forming gap between the two halves.",
+        },
+        {
+            "id": "mold",
+            "title": "Mold",
+            "fields": ["mold.flange_width", "mold.base_plate_thickness",
+                       "mold.cavity_plate_thickness", "mold.male_root_blend",
+                       "mold.male_floor_blend", "mold.female_entry_blend_top",
+                       "mold.female_entry_blend_bottom", "mold.plate_edge_chamfer",
+                       "mold.flange_relief_depth", "mold.parts"],
+        },
+        {
+            "id": "features",
+            "title": "Features",
+            "fields": ["features.clamp_holes", "features.pry_notches",
+                       "features.alignment_pins"],
+        },
+        {
+            "id": "manufacturing",
+            "title": "Manufacturing",
+            "fields": ["manufacturing.pin_fit_clearance", "manufacturing.min_wall",
+                       "manufacturing.nozzle_diameter"],
+        },
+        {
+            "id": "advanced",
+            "title": "Advanced",
+            "fields": ["tray.draft_angle", "tray.draft_mode", "tray.datum", "quality"],
+            "collapsed": True,
+        },
+    ],
+    "hidden": ["schema_version", "name"],
+    "fields": {
+        "tray.profile.length": {"unit": "mm", "step": 1, "slider": [40, 400]},
+        "tray.profile.width": {"unit": "mm", "step": 1, "slider": [40, 300]},
+        "tray.profile.corner_setback": {"unit": "mm", "step": 1},
+        "tray.profile.corner_radius": {"unit": "mm", "step": 1},
+        "tray.profile.rho": {"step": 0.05},
+        "tray.profile.exponent": {"step": 0.25},
+        "tray.depth": {"unit": "mm", "step": 0.5, "slider": [5, 120]},
+        "tray.datum": {
+            "disabled_values": {
+                "outer": {
+                    "code": "E-DATUM-001",
+                    "reason": "Outer-dimension input is planned but not implemented. "
+                              "The canonical datum is the inner (male) forming profile.",
+                }
+            }
+        },
+        "tray.draft_angle": {
+            "unit": "deg",
+            "step": 0.5,
+            "experimental": True,
+            "requires": "allow_experimental",
+            "note": "Draft is experimental. The current build holds a constant "
+                    "profile-plane gap, so the normal forming gap is "
+                    "nominal x cos(draft angle) - 45.6 um smaller at 10 deg on a 3 mm gap. "
+                    "The semantic contract is not decided.",
+        },
+        "tray.draft_mode": {"experimental": True, "requires": "allow_experimental"},
+        "leather.thickness": {"unit": "mm", "step": 0.1, "slider": [0.5, 8]},
+        "leather.compression": {"step": 0.01, "slider": [0, 0.4],
+                                "help": "Fraction the wet leather is deliberately squeezed."},
+        "fit.clearance": {"unit": "mm", "step": 0.05, "slider": [-0.5, 2]},
+        "fit.gap_override": {"unit": "mm", "step": 0.1,
+                             "help": "Set the forming gap directly, ignoring the formula."},
+        "mold.flange_width": {"unit": "mm", "step": 1, "slider": [8, 80]},
+        "mold.base_plate_thickness": {"unit": "mm", "step": 1, "slider": [3, 40]},
+        "mold.cavity_plate_thickness": {"unit": "mm", "step": 1, "slider": [3, 80]},
+        "mold.plate_edge_chamfer": {"unit": "mm", "step": 0.5, "unimplemented": True},
+        "mold.flange_relief_depth": {"unit": "mm", "step": 0.5, "unimplemented": True},
+        "manufacturing.pin_fit_clearance": {"unit": "mm", "step": 0.05},
+        "manufacturing.min_wall": {"unit": "mm", "step": 0.5},
+        "manufacturing.nozzle_diameter": {"unit": "mm", "step": 0.1},
     },
+    "derived": [
+        {"key": "forming_gap", "label": "Forming gap", "unit": "mm", "precision": 3},
+        {"key": "plate_length", "label": "Plate length", "unit": "mm", "precision": 1},
+        {"key": "plate_width", "label": "Plate width", "unit": "mm", "precision": 1},
+        {"key": "closed_height", "label": "Closed height", "unit": "mm", "precision": 1},
+        {"key": "female_flange_width", "label": "Female flange", "unit": "mm", "precision": 1},
+        {"key": "corner_setback", "label": "Corner setback", "unit": "mm", "precision": 1},
+        {"key": "corner_radius_min", "label": "Tightest radius", "unit": "mm", "precision": 2},
+        {"key": "vertical_wall_height", "label": "Vertical wall", "unit": "mm", "precision": 1},
+        {"key": "max_inward_offset", "label": "Max inward offset", "unit": "mm", "precision": 2},
+    ],
 }

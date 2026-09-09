@@ -28,5 +28,24 @@ class Settings:
     worker_start_timeout_s: float = _float("TRAYAPI_WORKER_START_TIMEOUT_S", 60.0)
     job_retention: int = _int("TRAYAPI_JOB_RETENTION", 500)
 
+    # -- public exposure ---------------------------------------------------
+    #: Origins allowed to call the API.  "*" is fine for local development and
+    #: wrong for anything reachable from the internet.
+    allowed_origins: tuple[str, ...] = tuple(
+        o.strip() for o in os.environ.get("TRAYAPI_ALLOWED_ORIGINS", "*").split(",") if o.strip()
+    )
+    #: Token bucket for the endpoints that cost CPU: N requests per window.
+    rate_limit_requests: int = _int("TRAYAPI_RATE_LIMIT_REQUESTS", 20)
+    rate_limit_window_s: float = _float("TRAYAPI_RATE_LIMIT_WINDOW_S", 60.0)
+    #: Expensive jobs one client may have in flight at once.
+    max_concurrent_jobs_per_client: int = _int("TRAYAPI_MAX_CONCURRENT_JOBS_PER_CLIENT", 3)
+    #: Parameter documents are a few kB; anything larger is not a design.
+    max_request_bytes: int = _int("TRAYAPI_MAX_REQUEST_BYTES", 256 * 1024)
+
+    # -- cache eviction ----------------------------------------------------
+    cache_max_bytes: int = _int("TRAYAPI_CACHE_MAX_BYTES", 2 * 1024 * 1024 * 1024)
+    cache_max_age_s: float = _float("TRAYAPI_CACHE_MAX_AGE_S", 7 * 24 * 3600)
+    cache_sweep_interval_s: float = _float("TRAYAPI_CACHE_SWEEP_INTERVAL_S", 300.0)
+
 
 SETTINGS = Settings()

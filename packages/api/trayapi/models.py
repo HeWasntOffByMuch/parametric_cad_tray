@@ -80,6 +80,15 @@ class JobResponse(BaseModel):
     error: dict[str, Any] | None = None
 
 
+class HealthResponse(BaseModel):
+    status: Literal["ok"]
+    api_version: str
+    uptime_s: float
+    workers: dict[str, Any]
+    cache: dict[str, Any]
+    limits: dict[str, Any]
+
+
 class VersionResponse(BaseModel):
     api_version: str
     schema_version: str

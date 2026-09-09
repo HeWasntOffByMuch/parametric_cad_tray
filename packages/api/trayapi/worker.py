@@ -155,6 +155,10 @@ class WorkerPool:
     def spawned(self) -> int:
         return self._spawned
 
+    @property
+    def idle_count(self) -> int:
+        return self._idle.qsize()
+
     # -- work --------------------------------------------------------------
     def run(
         self,

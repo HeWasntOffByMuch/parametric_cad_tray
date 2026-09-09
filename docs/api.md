@@ -64,6 +64,8 @@ document before anything is hashed, so `build(params, quality="preview")` and
 | POST | `/api/jobs/{id}/cancel` | 200 / 404 | |
 | GET | `/api/artifacts/{key}/{name}` | 200 / 404 | one file |
 | GET | `/api/artifacts/{key}/bundle.zip` | 200 / 404 | every artifact + `result.json` |
+| GET | `/api/jobs/{id}/events` | 200 | server-sent events, one frame per transition |
+| GET | `/api/health` | 200 | status, worker pool, cache stats, limits; runs no geometry |
 | GET | `/` | 200 | developer harness, not the product UI |
 
 Invalid parameters return **422** with
@@ -250,7 +252,73 @@ the answer cannot go stale — which took the core call from 12 ms to 0.06 ms.
 
 ---
 
-## 9. Draft stays experimental
+## 9. Public-exposure hardening
+
+Added when the browser application made the API publicly reachable.
+
+**CORS** — `TRAYAPI_ALLOWED_ORIGINS`, comma separated. `*` is the development
+default and wrong for anything on the internet.
+
+**Rate limiting**, on `/api/preview` and `/api/export` only. Schema, presets,
+version, health, validate and artifact downloads are never limited: validation is
+~2 ms and the UI calls it on every edit, so limiting it would break the product to
+protect nothing.
+
+Two independent limits:
+
+| limit | default | applies to |
+|---|---|---|
+| sliding window per client | 20 requests / 60 s | every build request |
+| concurrent builds per client | 3 | only requests that **start** a build |
+
+A cache hit, and a request that attaches to an identical build already running,
+occupy no worker and so consume no concurrency slot — refusing them would punish
+a client for asking for something cheap. Refusals are `429` with `Retry-After`.
+
+**Request bounds** — bodies over `TRAYAPI_MAX_REQUEST_BYTES` (256 kB) are refused
+with `413` from the `Content-Length` header, before being buffered. A parameter
+document is a few kB.
+
+**Cache eviction** — age first, then LRU by last *read* until the store is under
+`TRAYAPI_CACHE_MAX_BYTES` (2 GiB default) and `TRAYAPI_CACHE_MAX_AGE_S` (7 days).
+Recency is the entry directory's mtime, touched on every hit, so a design people
+keep returning to outlives one built once and forgotten. A background thread
+sweeps every `TRAYAPI_CACHE_SWEEP_INTERVAL_S` (300 s). **An entry belonging to an
+active job is pinned** and never removed, however old — the job is about to hand
+out its URLs. `GET /api/health` reports entries, bytes, the last sweep and what it
+removed.
+
+**Health** — `GET /api/health` returns status, uptime, worker pool availability,
+cache statistics and the current limits. It runs no geometry and takes no worker
+round-trip.
+
+## 10. Deployment constraint: one API process
+
+Job state is in memory, deliberately. That means one API process and its worker
+pool; several would each have their own job registry, so a client polling job `X`
+could reach a process that never heard of it.
+
+The artifact cache is on disk, so recovery is cheap: after a restart the SSE
+connection fails, `GET /api/jobs/{id}` returns 404, and resubmitting the same
+parameters hits the cache and answers immediately. Both halves of that path are
+tested. Add a shared job store when load actually requires it, not before.
+
+## 11. Server-sent events
+
+`GET /api/jobs/{id}/events` streams one frame per state transition, named for the
+state (`queued`, `running`, `complete`, `failed`, `cancelled`) and carrying the
+full job payload, plus a keep-alive comment every 15 s. The job manager pushes on
+transition rather than the endpoint polling, so a browser sees `complete` the
+moment the worker returns.
+
+`progress` is always `null` — the core exposes no meaningful stages and a
+fabricated percentage would be a lie. `status` carries a short human-readable
+message instead.
+
+`GET /api/jobs/{id}` remains the fallback for a dropped stream, a buffering proxy
+or a restarted API.
+
+## 12. Draft stays experimental
 
 Nonzero `tray.draft_angle` is refused with `E-DRAFT-EXPERIMENTAL` unless the
 request sets `allow_experimental: true`. The message states what the current
