@@ -581,3 +581,34 @@ button.lg { height: 36px; font-size: 13px; }
 @media (max-width: 1200px) {
   .usage-counter { order: 10; }
 }
+
+/* -- build progress ------------------------------------------------------- */
+/* A hairline along the bottom edge of the status bar rather than a widget in
+   the row: the bar has to live inside a strip that is already full, and a line
+   that fills is readable at 2px in a way a bordered track is not.
+   scaleX rather than width so it animates on the compositor and cannot reflow
+   the row it sits in. */
+.progress-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  border-bottom-left-radius: var(--radius);
+  border-bottom-right-radius: var(--radius);
+  background: var(--line-soft);
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  /* Long enough to read as motion between stages, short enough that the bar is
+     never behind the thing it is describing. */
+  transition: transform 200ms ease-out;
+}
+.progress-percent { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill { transition: none; }
+}

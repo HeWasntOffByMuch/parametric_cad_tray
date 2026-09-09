@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Grid, OrbitControls, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
@@ -8,7 +8,11 @@ export type PartMode = 'both' | 'male' | 'female'
 export type ViewMode = 'assembled' | 'exploded'
 
 export interface ViewerProps {
-  url: string | null
+  /** One GLB per half. Two files rather than one, because a preview builds the
+   *  halves as separate jobs so that changing a cavity setting does not rebuild
+   *  the plug - see docs/frontend.md. Either may be absent while the other is
+   *  still building, and the scene renders whatever it has. */
+  urls: { male: string | null; female: string | null }
   partMode: PartMode
   viewMode: ViewMode
   showMale: boolean
@@ -46,42 +50,91 @@ export function explodeOffset(viewMode: ViewMode): number {
   return viewMode === 'exploded' ? 60 : 0
 }
 
-function MoldScene({ url, partMode, viewMode, showMale, showFemale, onMeasured }: Omit<ViewerProps, 'stale' | 'resetToken'> & { url: string; onMeasured: (m: { radius: number; floorY: number }) => void }) {
+function PartScene({
+  url,
+  name,
+  explode,
+  visible,
+  onLoaded,
+}: {
+  url: string
+  name: 'male' | 'female'
+  explode: number
+  visible: boolean
+  onLoaded: (url: string) => void
+}) {
   const { scene } = useGLTF(apiUrl(url))
   const cloned = useMemo(() => scene.clone(true), [scene])
-  const { camera, controls } = useThree() as any
 
-  const parts = useMemo(() => {
-    const found: Record<string, THREE.Object3D> = {}
+  // The named node, not the GLB root. The root carries the exporter's Z-up to
+  // Y-up quaternion, so translating it would move the half along *world* Z,
+  // while the press axis is the part's own local Z. Offsetting the node inside
+  // keeps the explode along the axis the mold actually opens on.
+  const node = useMemo(() => {
+    let found: THREE.Object3D | null = null
     cloned.traverse((child) => {
-      if (child.name === 'male' || child.name === 'female') found[child.name] = child
+      if (child.name === name) found = child
     })
-    return found
-  }, [cloned])
+    return (found ?? cloned) as THREE.Object3D
+  }, [cloned, name])
 
-  const explode = explodeOffset(viewMode)
   useEffect(() => {
-    const wanted = partVisibility(partMode, showMale, showFemale)
-    for (const [name, object] of Object.entries(parts)) {
-      object.visible = wanted[name as 'male' | 'female']
-      object.position.set(0, 0, name === 'female' ? explode : -explode)
-    }
-  }, [parts, partMode, showMale, showFemale, explode])
+    node.visible = visible
+    node.position.set(0, 0, name === 'female' ? explode : -explode)
+  }, [node, visible, explode, name])
 
-  // Re-measured after the parts move, not just when the model loads: exploding
+  // Separate from the effect above on purpose: this fires when a *new model*
+  // arrives, not when it is shown, hidden or exploded. Merging them would
+  // re-fit the camera every time the Part selector was touched.
+  useEffect(() => {
+    onLoaded(url)
+  }, [cloned, url, onLoaded])
+
+  return <primitive object={cloned} />
+}
+
+function MoldScene({
+  urls,
+  partMode,
+  viewMode,
+  showMale,
+  showFemale,
+  onMeasured,
+}: Omit<ViewerProps, 'stale' | 'resetToken'> & {
+  onMeasured: (m: { radius: number; floorY: number }) => void
+}) {
+  const group = useRef<THREE.Group>(null)
+  const { camera, controls } = useThree() as any
+  const explode = explodeOffset(viewMode)
+  const wanted = partVisibility(partMode, showMale, showFemale)
+
+  // Fitting the camera to the first half to arrive and then again to both
+  // reads as a jump on every load, so nothing is fitted until every half that
+  // is coming has arrived.
+  const expected = [urls.male, urls.female].filter(Boolean) as string[]
+  const [loaded, setLoaded] = useState<string[]>([])
+  const onLoaded = useCallback((url: string) => {
+    setLoaded((seen) => (seen.includes(url) ? seen : [...seen, url]))
+  }, [])
+  const ready = expected.length > 0 && expected.every((url) => loaded.includes(url))
+  const fitKey = ready ? expected.join('|') : null
+
+  // Re-measured after the parts move, not just when a model loads: exploding
   // drops the male half well below where it sits assembled, and a floor placed
   // from the assembled box would then cut straight through it.
   useEffect(() => {
-    const box = new THREE.Box3().setFromObject(cloned)
+    if (!ready || !group.current) return
+    const box = new THREE.Box3().setFromObject(group.current)
     if (box.isEmpty()) return
     onMeasured({
       radius: box.getBoundingSphere(new THREE.Sphere()).radius,
       floorY: box.min.y,
     })
-  }, [cloned, explode, partMode, showMale, showFemale, onMeasured])
+  }, [ready, fitKey, explode, partMode, showMale, showFemale, onMeasured])
 
   useEffect(() => {
-    const box = new THREE.Box3().setFromObject(cloned)
+    if (!fitKey || !group.current) return
+    const box = new THREE.Box3().setFromObject(group.current)
     if (box.isEmpty()) return
     const centre = box.getCenter(new THREE.Vector3())
     const sphere = box.getBoundingSphere(new THREE.Sphere())
@@ -100,26 +153,25 @@ function MoldScene({ url, partMode, viewMode, showMale, showFemale, onMeasured }
       controls.target.copy(centre)
       controls.update()
     }
-  }, [cloned, camera, controls])
+  }, [fitKey, camera, controls])
 
   // No rotation here. CadQuery's glTF exporter already writes the Z-up to Y-up
-  // conversion onto the assembly's root node (a -90 degree quaternion about X),
-  // so rotating again turned the whole 180 degrees and stood the plate on its
-  // edge. The mesh data stays Z-up, which is why the explode offset above is
-  // still along the parts' local Z - that is the press axis.
-  return <primitive object={cloned} />
+  // conversion onto each file's root node (a -90 degree quaternion about X), so
+  // rotating again turned the whole 180 degrees and stood the plate on its edge.
+  return (
+    <group ref={group}>
+      {urls.male && (
+        <PartScene url={urls.male} name="male" explode={explode}
+                   visible={wanted.male} onLoaded={onLoaded} />
+      )}
+      {urls.female && (
+        <PartScene url={urls.female} name="female" explode={explode}
+                   visible={wanted.female} onLoaded={onLoaded} />
+      )}
+    </group>
+  )
 }
 
-/**
- * A light that rides the camera, aimed at the origin.
- *
- * A fixed rig can only light the sides it faces. Every light here used to be
- * above the parting plane, and a hemisphere light gives down-facing surfaces its
- * ground colour and nothing else - so looking up at an exploded mold showed a
- * black silhouette. A headlight makes the guarantee positional rather than
- * directional: whatever you have turned towards you is lit, from any angle. The
- * fixed key and fill still do the shaping; this only sets the floor.
- */
 function CameraLight({ intensity }: { intensity: number }) {
   const light = useRef<THREE.DirectionalLight>(null)
   useFrame(({ camera }) => {
@@ -210,8 +262,12 @@ export function Viewer(props: ViewerProps) {
         side={THREE.FrontSide}
       />
       <Suspense fallback={null}>
-        {props.url && (
-          <MoldScene key={`${props.url}-${key}`} {...props} url={props.url} onMeasured={setMeasured} />
+        {(props.urls.male || props.urls.female) && (
+          <MoldScene
+            key={`${props.urls.male ?? ''}+${props.urls.female ?? ''}-${key}`}
+            {...props}
+            onMeasured={setMeasured}
+          />
         )}
       </Suspense>
       {/* Damping at 0.12 coasts for several seconds after a drag; the camera is

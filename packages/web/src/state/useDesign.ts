@@ -34,6 +34,46 @@ function stableStringify(value: unknown): string {
 export type PreviewState = 'empty' | 'generating' | 'clean' | 'dirty' | 'failed'
 
 /** Enough to stop a network request per keystroke, short enough to feel live. */
+/**
+ * The preview's two halves.
+ *
+ * A preview is built as two independent jobs on the server - the plug and the
+ * cavity share no geometry downstream of the base profile - so each half has
+ * its own cache entry and its own URL. Changing a cavity-only setting reuses
+ * the plug's entry untouched, which is most of why an edit is fast.
+ */
+export interface PreviewUrls {
+  male: string | null
+  female: string | null
+}
+
+export const EMPTY_URLS: PreviewUrls = { male: null, female: null }
+
+export function hasAny(urls: PreviewUrls): boolean {
+  return Boolean(urls.male || urls.female)
+}
+
+/** Pull the per-half GLB URLs out of a finished job's artifacts.
+ *
+ *  Falls back to the single combined `preview.glb` an older API returns, so a
+ *  frontend deployed ahead of its backend still shows a model. */
+export function previewUrlsOf(job: Job): PreviewUrls {
+  const out: PreviewUrls = { male: null, female: null }
+  for (const artifact of Object.values(job.artifacts ?? {})) {
+    if (artifact.format !== 'glb') continue
+    if (artifact.part === 'male' || artifact.part === 'female') {
+      out[artifact.part] = artifact.url
+    } else {
+      // A combined assembly GLB carries both halves in one file; handing the
+      // same URL to both slots makes the viewer load it once and find each
+      // named node in it.
+      out.male = out.male ?? artifact.url
+      out.female = out.female ?? artifact.url
+    }
+  }
+  return out
+}
+
 export const VALIDATE_DEBOUNCE_MS = 250
 /** A cache-miss preview costs ~3.4 s, so idle regeneration waits for a real pause. */
 export const PREVIEW_IDLE_MS = 700
@@ -54,7 +94,10 @@ export interface DesignState {
   valid: boolean
   previewState: PreviewState
   previewJob: Job | null
-  previewUrl: string | null
+  /** One GLB per half. The API builds them as separate cache entries, so a
+   *  change that only touches the cavity leaves the plug's URL alone and the
+   *  viewer keeps the mesh it already has. */
+  previewUrls: PreviewUrls
   previewedFingerprint: string | null
   currentHash: string | null
   transportError: string | null
@@ -80,7 +123,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
   const [validation, setValidation] = useState<ValidateResponse | null>(null)
   const [validating, setValidating] = useState(false)
   const [previewJob, setPreviewJob] = useState<Job | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewUrls, setPreviewUrls] = useState<PreviewUrls>(EMPTY_URLS)
   const [previewedFingerprint, setPreviewedFingerprint] = useState<string | null>(null)
   const [previewState, setPreviewState] = useState<PreviewState>('empty')
   const [transportError, setTransportError] = useState<string | null>(null)
@@ -99,8 +142,11 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
   // rather than whatever was closed over when the callback was made.
   const previewedRef = useRef<string | null>(null)
   previewedRef.current = previewedFingerprint
-  const previewUrlRef = useRef<string | null>(null)
-  previewUrlRef.current = previewUrl
+  const previewUrlRef = useRef<PreviewUrls>(EMPTY_URLS)
+  previewUrlRef.current = previewUrls
+  /** Is there a model on screen at all? The difference between 'this is now
+   *  out of date' and 'there is nothing here yet'. */
+  const onScreen = hasAny(previewUrls)
   /** Fingerprint of the build currently in flight, if any. */
   const inFlight = useRef<string | null>(null)
 
@@ -142,9 +188,9 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     setPreviewState((state) => {
       if (state === 'generating') return state
       if (fingerprint === previewedFingerprint) return 'clean'
-      return previewUrl ? 'dirty' : state
+      return onScreen ? 'dirty' : state
     })
-  }, [fingerprint, previewedFingerprint, previewUrl])
+  }, [fingerprint, previewedFingerprint, onScreen])
 
   // -- shareable state ------------------------------------------------------
   useEffect(() => {
@@ -164,7 +210,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     // screen, and rebuilding it produces a byte-identical GLB. The server would
     // serve it from cache in milliseconds, so it looks harmless, but it is still
     // a round trip, a rate-limit slot and a re-fetch of the model for nothing.
-    if (requested === previewedRef.current && previewUrlRef.current) {
+    if (requested === previewedRef.current && hasAny(previewUrlRef.current)) {
       setPreviewState('clean')
       return
     }
@@ -186,7 +232,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     } catch (error) {
       runningJobId.current = null
       inFlight.current = null
-      setPreviewState(previewUrl ? 'dirty' : 'failed')
+      setPreviewState(onScreen ? 'dirty' : 'failed')
       setTransportError((error as ApiError).message)
       return
     }
@@ -201,18 +247,18 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
       // it was built from are still the ones the user has.
       const stale = requested !== fingerprintRef.current
       if (finished.state === 'complete') {
-        const artifact = finished.artifacts['preview.glb']
-        if (artifact && !stale) {
-          setPreviewUrl(artifact.url)
+        const found = previewUrlsOf(finished)
+        if (hasAny(found) && !stale) {
+          setPreviewUrls(found)
           setPreviewedFingerprint(requested)
           setPreviewState('clean')
-        } else if (artifact && stale) {
-          setPreviewState(previewUrl ? 'dirty' : 'empty')
+        } else if (hasAny(found) && stale) {
+          setPreviewState(onScreen ? 'dirty' : 'empty')
         }
       } else if (finished.state === 'failed') {
         if (!stale) setPreviewState('failed')
       } else if (finished.state === 'cancelled') {
-        setPreviewState(previewUrl ? 'dirty' : 'empty')
+        setPreviewState(onScreen ? 'dirty' : 'empty')
       }
     }
 
@@ -225,7 +271,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
       onDone: settle,
       onError: (e) => setTransportError(e.message),
     })
-  }, [allowExperimental, previewUrl])
+  }, [allowExperimental, onScreen])
 
   const cancelPreview = useCallback(() => {
     const id = runningJobId.current
@@ -233,8 +279,8 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     runningJobId.current = null
     inFlight.current = null
     if (id) void api.cancel(id).catch(() => {})
-    setPreviewState(previewUrl ? 'dirty' : 'empty')
-  }, [previewUrl])
+    setPreviewState(onScreen ? 'dirty' : 'empty')
+  }, [onScreen])
 
   const scheduleIdlePreview = useCallback(
     (delayMs = previewIdleMs) => {
@@ -281,7 +327,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     (next: Json) => {
       setParamsState(next)
       setPreviewedFingerprint(null)
-      setPreviewUrl(null)
+      setPreviewUrls(EMPTY_URLS)
       setPreviewState('empty')
       scheduleIdlePreview()
     },
@@ -307,13 +353,13 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
       valid: validation?.valid ?? false,
       previewState,
       previewJob,
-      previewUrl,
+      previewUrls,
       previewedFingerprint,
       currentHash,
       transportError,
       allowExperimental,
     }),
-    [params, validation, validating, previewState, previewJob, previewUrl, previewedFingerprint, currentHash, transportError, allowExperimental],
+    [params, validation, validating, previewState, previewJob, previewUrls, previewedFingerprint, currentHash, transportError, allowExperimental],
   )
 
   return [

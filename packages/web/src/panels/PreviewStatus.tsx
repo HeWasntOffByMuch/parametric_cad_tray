@@ -44,6 +44,13 @@ export function PreviewStatus({
           ? 'served from cache'
           : null
 
+  // Only while generating, and only once the worker has actually reported a
+  // stage. Before that there is nothing true to draw: a bar sitting at 0 is a
+  // promise, and one that animates on its own is a lie.
+  const fraction =
+    state === 'generating' && typeof job?.progress === 'number' ? job.progress : null
+  const percent = fraction === null ? null : Math.round(fraction * 100)
+
   return (
     <div className="preview-status" data-testid="preview-status" data-state={state}>
       <span className={`status-dot ${copy.tone}`} aria-hidden="true" />
@@ -51,6 +58,11 @@ export function PreviewStatus({
         {copy.label}
       </span>
       {detail && <span className="detail">{detail}</span>}
+      {percent !== null && (
+        <span className="detail progress-percent" data-testid="progress-percent">
+          {percent}%
+        </span>
+      )}
       {validating && <span className="detail">checking…</span>}
       <span className="spacer" />
       {state === 'generating' ? (
@@ -74,6 +86,19 @@ export function PreviewStatus({
         >
           Update preview
         </button>
+      )}
+      {fraction !== null && (
+        <div
+          className="progress-track"
+          data-testid="progress-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent ?? 0}
+          aria-label="Build progress"
+        >
+          <div className="progress-fill" style={{ transform: `scaleX(${fraction})` }} />
+        </div>
       )}
     </div>
   )

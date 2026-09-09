@@ -40,12 +40,38 @@ def main(argv: list[str] | None = None) -> int:
         if msg is None:
             return 0
         try:
+            params = Params.model_validate(msg["params"])
+            # The fraction table is computed here, in the process that is about
+            # to do the work, so it can never disagree with the stages the build
+            # actually runs. The parent is sent numbers, not a vocabulary it
+            # would have to keep in step.
+            from traymold.api import apply_options
+            from traymold.progress import LABELS, plan
+
+            effective = apply_options(params, msg["quality"], msg["parts"])
+            table = plan(effective)
+
+            def report_stage(stage: str) -> None:
+                # A progress frame is a message on the same pipe as the result,
+                # distinguished by its key. It must never raise: a broken pipe
+                # here would abandon a build that is otherwise fine, and the
+                # parent's own recv loop will notice the worker is gone anyway.
+                try:
+                    conn.send({"progress": {
+                        "stage": stage,
+                        "fraction": table.get(stage, 0.0),
+                        "label": LABELS.get(stage, stage),
+                    }})
+                except Exception:
+                    pass
+
             report = api.build_and_emit(
-                Params.model_validate(msg["params"]),
+                params,
                 msg["quality"],
                 msg["parts"],
                 tuple(msg["formats"]),
                 msg["outdir"],
+                on_stage=report_stage,
             )
             conn.send({"ok": True, "report": report.as_dict()})
         except BaseException as exc:  # noqa: BLE001 - catching everything is the point

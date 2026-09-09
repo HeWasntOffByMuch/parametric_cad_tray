@@ -37,7 +37,44 @@ def test_sse_streams_states_through_to_complete(live_client, ref_params):
     final = parse_sse(body)[-1]
     assert final["artifacts"]["preview.glb"]["url"].startswith("/api/artifacts/")
     assert final["status"] == "done"
-    assert final["progress"] is None, "progress must not be invented"
+    assert final["progress"] == 1.0
+
+
+@pytest.mark.slow
+def test_sse_reports_real_monotonic_progress(live_client, ref_params):
+    """The bar is a promise about time, so this asserts it is kept.
+
+    Progress must come from stages the build actually finished - never
+    interpolated, never invented, never backwards - and the last frame must be
+    exactly 1.0 rather than something that rounds to it.
+    """
+    job_id = live_client.post("/api/preview", json={"params": ref_params}).json()["id"]
+    with live_client.stream("GET", f"/api/jobs/{job_id}/events") as stream:
+        body = "".join(stream.iter_text())
+
+    events = parse_sse(body)
+    fractions = [e["progress"] for e in events if e.get("progress") is not None]
+    assert len(fractions) >= 3, f"expected several stages, got {fractions}"
+    assert fractions == sorted(fractions), f"progress went backwards: {fractions}"
+    assert all(0.0 <= f <= 1.0 for f in fractions), fractions
+    assert fractions[-1] == 1.0
+
+    # Every reported stage is one the plan said would run, in the plan's order.
+    from traymold.api import apply_options
+    from traymold.params import Params
+    from traymold.progress import plan
+
+    expected = plan(apply_options(Params.model_validate(ref_params), "preview", None))
+    # The terminal frame repeats the last stage - the job is still *at* write
+    # when it completes - so compare the sequence of distinct stages.
+    reported: list[str] = []
+    for event in events:
+        stage = event.get("stage")
+        if stage and (not reported or reported[-1] != stage):
+            reported.append(stage)
+    assert reported, "no stage names were reported"
+    assert set(reported) <= set(expected), (reported, list(expected))
+    assert reported == [s for s in expected if s in set(reported)]
 
 
 @pytest.mark.slow

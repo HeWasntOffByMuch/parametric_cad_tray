@@ -39,6 +39,13 @@ class Job:
     params_hash: str
     state: State = "queued"
     status: str | None = "queued"
+    #: 0.0-1.0 while running, reported by the worker as each stage finishes.
+    #: None until the first stage lands, and on a cache hit, where there is no
+    #: build to be partway through.
+    progress: float | None = None
+    #: The stage id behind the current fraction, for anyone who wants to render
+    #: something other than the label.
+    stage: str | None = None
     cached: bool = False
     report: dict | None = None
     error: JobError | None = None
@@ -142,10 +149,24 @@ class JobManager:
         job.status = "building geometry"
         job.started_at = time.time()
         self._emit(job)
+
+        def on_progress(frame: dict) -> None:
+            # Monotonic by construction: the worker sends stages in order and
+            # never repeats one. Guarded anyway, because a bar that goes
+            # backwards reads as a bug in the build rather than in the bar.
+            fraction = frame.get("fraction")
+            if isinstance(fraction, (int, float)):
+                if job.progress is None or fraction > job.progress:
+                    job.progress = float(min(1.0, max(0.0, fraction)))
+            job.stage = frame.get("stage")
+            job.status = frame.get("label") or job.status
+            self._emit(job)
+
         try:
             pool = self._pool or get_pool()
             dispatched = time.perf_counter()
-            report = pool.run(payload, cancel=job.cancel, timeout=self.timeout)
+            report = pool.run(payload, cancel=job.cancel, timeout=self.timeout,
+                              on_progress=on_progress)
             report.setdefault("timings", {})["worker_roundtrip_s"] = round(
                 time.perf_counter() - dispatched, 4
             )
@@ -168,6 +189,11 @@ class JobManager:
         job.state = state
         job.error = error
         job.status = {"complete": "done", "failed": "failed", "cancelled": "cancelled"}[state]
+        # A finished build is 1.0 whatever the last stage reported; a failed or
+        # cancelled one keeps the fraction it got to, which is the useful thing
+        # to know about where it stopped.
+        if state == "complete":
+            job.progress = 1.0
         job.finished_at = time.time()
         with self._lock:
             if self._by_key.get(job.cache_key) == job.id:

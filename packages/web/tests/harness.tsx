@@ -39,6 +39,7 @@ export class FakeBackend {
       state: 'complete',
       kind: 'preview',
       progress: null,
+      stage: null,
       status: 'done',
       params_hash: null,
       cache_key: 'key',

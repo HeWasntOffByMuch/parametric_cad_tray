@@ -9,7 +9,7 @@ import { ExportPanel } from './panels/ExportPanel'
 import { PreviewStatus } from './panels/PreviewStatus'
 import { UsageCounter } from './panels/UsageCounter'
 import { ViewerControls } from './panels/ViewerControls'
-import { useDesign, type DesignOptions } from './state/useDesign'
+import { hasAny, useDesign, type DesignOptions } from './state/useDesign'
 import { restoreDesign, shareUrl } from './state/urlState'
 import { Viewer, type PartMode, type ViewMode } from './viewer/Viewer'
 
@@ -215,9 +215,9 @@ export function App({ options }: { options?: DesignOptions } = {}) {
           // like a button that does nothing.
           canGenerate={!blocked && design.previewState !== 'clean'}
         />
-          {design.previewUrl ? (
+          {hasAny(design.previewUrls) ? (
             <Viewer
-              url={design.previewUrl}
+              urls={design.previewUrls}
               partMode={partMode}
               viewMode={viewMode}
               showMale={showMale}

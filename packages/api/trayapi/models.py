@@ -69,7 +69,11 @@ class JobResponse(BaseModel):
     id: str
     state: Literal["queued", "running", "complete", "failed", "cancelled"]
     kind: Literal["preview", "export"]
-    progress: None = None
+    #: 0.0-1.0 as each build stage finishes; null before the first one lands and
+    #: on a cache hit, where nothing was built to be partway through.
+    progress: float | None = None
+    #: The stage id behind that fraction - see traymold.progress.LABELS.
+    stage: str | None = None
     status: str | None = None
     params_hash: str | None = None
     cache_key: str | None = None

@@ -11,7 +11,12 @@ vi.mock('../src/viewer/Viewer', async () => {
     Viewer: (props: any) =>
       createElement('div', {
         'data-testid': 'viewer-canvas',
-        'data-url': props.url,
+        // Both halves, joined, so a test can assert on either one or on the
+        // pair. A preview is two GLBs now, not one.
+        'data-url':
+          [...new Set([props.urls?.male, props.urls?.female].filter(Boolean))].join(' ') || null,
+        'data-url-male': props.urls?.male ?? null,
+        'data-url-female': props.urls?.female ?? null,
         'data-part-mode': props.partMode,
         'data-view-mode': props.viewMode,
         'data-stale': String(props.stale),

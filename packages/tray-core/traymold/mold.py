@@ -495,8 +495,25 @@ class MoldResult:
         }
 
 
-def build(params) -> MoldResult:
+def build(params, *, on_stage=None) -> MoldResult:
+    """Build the solids.
+
+    `on_stage(name)` is called as each stage *finishes*, in the order
+    `progress.ORDER` declares. It is a reporting hook and nothing more: it
+    cannot change the geometry, and a caller that does not pass one pays
+    nothing. Errors raised by the hook are the caller's problem, not this
+    module's - so they are swallowed, because a progress bar must never be able
+    to fail a build.
+    """
     from .validate import raise_on_errors
+
+    def done(stage: str) -> None:
+        if on_stage is None:
+            return
+        try:
+            on_stage(stage)
+        except Exception:  # pragma: no cover - the point is that nothing escapes
+            pass
 
     raise_on_errors(params)
     base = make_base_profile(params)
@@ -507,18 +524,31 @@ def build(params) -> MoldResult:
     shared = _BaseCache(base)
     male_family = ProfileFamily(base, 0.0, shared)      # the male IS the base profile
     female_family = ProfileFamily(base, gap, shared)    # base + forming gap, nothing else
+    done("profile")
 
     parts = params.mold.parts
     male = female = None
     if parts.male:
         male = build_male_from_profile(male_family, params)
-        male = apply_male_root_blend(male, male_family, params)
-        male = apply_male_floor_blend(male, male_family, params)
+        done("male_solid")
+        if params.mold.male_root_blend.active:
+            male = apply_male_root_blend(male, male_family, params)
+            done("male_root_blend")
+        if params.mold.male_floor_blend.active:
+            male = apply_male_floor_blend(male, male_family, params)
+            done("male_floor_blend")
     if parts.female:
         female = build_female_from_profile(female_family, params)
-        female = apply_female_entry_blend(female, female_family, params)
+        done("female_solid")
+        if (params.mold.female_entry_blend_top.active
+                or params.mold.female_entry_blend_bottom.active):
+            female = apply_female_entry_blend(female, female_family, params)
+            done("female_entry_blend")
 
     male, female = apply_features(male, female, params)
+    f = params.features
+    if f.clamp_holes.enabled or f.pry_notches.enabled or f.alignment_pins.enabled:
+        done("features")
     return MoldResult(
         male,
         female,

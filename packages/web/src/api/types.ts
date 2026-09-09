@@ -41,7 +41,10 @@ export interface Job {
   id: string
   state: JobState
   kind: 'preview' | 'export'
-  progress: null
+  /** 0-1 as each build stage lands; null before the first one and on a cache hit. */
+  progress: number | null
+  /** The stage id behind that fraction, e.g. 'male_floor_blend'. */
+  stage: string | null
   status: string | null
   params_hash: string | null
   cache_key: string | null

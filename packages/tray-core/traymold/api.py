@@ -198,10 +198,11 @@ def validate(params: Params, quality: Quality_ | None = None, parts=None) -> Val
     )
 
 
-def build(params: Params, quality: Quality_ | None = None, parts=None) -> BuildResult:
+def build(params: Params, quality: Quality_ | None = None, parts=None,
+          *, on_stage=None) -> BuildResult:
     """Build the solids.  Raises `ValidationError` if the parameters are invalid."""
     effective = apply_options(params, quality, parts)
-    result: MoldResult = _build(effective)
+    result: MoldResult = _build(effective, on_stage=on_stage)
     return BuildResult(
         params_hash=params_hash(effective),
         schema_version=SCHEMA_VERSION,
@@ -237,22 +238,33 @@ def build_and_emit(
     parts,
     formats: Sequence[Format],
     outdir: str | Path,
+    *,
+    on_stage=None,
 ) -> BuildReport:
     """build + emit in one call, returning only serializable data.
 
     This is the unit of work a worker process performs.  The OCC solids are
     created, used and released inside the caller's process; only the report and
     the files on disk leave it.
+
+    `on_stage(name)` is called as each stage finishes, including the `write`
+    stage that `build` itself cannot see.  `progress.plan(effective)` turns those
+    names into fractions.
     """
     import time
 
     effective = apply_options(params, quality, parts)
     t0 = time.perf_counter()
-    result = build(effective)
+    result = build(effective, on_stage=on_stage)
     t_build = time.perf_counter() - t0
     t0 = time.perf_counter()
     artifacts = emit(result, outdir, formats, quality=_resolve_quality(effective))
     t_emit = time.perf_counter() - t0
+    if on_stage is not None:
+        try:
+            on_stage("write")
+        except Exception:  # pragma: no cover
+            pass
     return BuildReport(
         params_hash=result.params_hash,
         schema_version=result.schema_version,

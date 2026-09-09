@@ -167,6 +167,7 @@ class WorkerPool:
         timeout: float | None = None,
         cancel: threading.Event | None = None,
         poll_interval: float = 0.05,
+        on_progress=None,
     ) -> dict:
         """Run one build in one worker.  Blocking; call from a thread.
 
@@ -181,6 +182,11 @@ class WorkerPool:
         try:
             worker.conn.send(payload)
             deadline = time.monotonic() + timeout
+            # The worker sends zero or more progress frames and then exactly one
+            # result. Both arrive on the same pipe, so this loop keeps reading
+            # until it sees something that is not a progress frame - and the
+            # deadline keeps running throughout, so a build that reports
+            # progress and then hangs still times out.
             while True:
                 if cancel is not None and cancel.is_set():
                     recycle = True
@@ -188,16 +194,25 @@ class WorkerPool:
                 if not worker.alive:
                     recycle = True
                     raise WorkerFailure(WORKER_CRASH, PUBLIC_MESSAGE[WORKER_CRASH])
-                if worker.conn.poll(poll_interval):
-                    break
-                if time.monotonic() > deadline:
+                if not worker.conn.poll(poll_interval):
+                    if time.monotonic() > deadline:
+                        recycle = True
+                        raise WorkerFailure(TIMEOUT, PUBLIC_MESSAGE[TIMEOUT])
+                    continue
+                try:
+                    message = worker.conn.recv()
+                except EOFError:
                     recycle = True
-                    raise WorkerFailure(TIMEOUT, PUBLIC_MESSAGE[TIMEOUT])
-            try:
-                result = worker.conn.recv()
-            except EOFError:
-                recycle = True
-                raise WorkerFailure(WORKER_CRASH, PUBLIC_MESSAGE[WORKER_CRASH]) from None
+                    raise WorkerFailure(WORKER_CRASH, PUBLIC_MESSAGE[WORKER_CRASH]) from None
+                if isinstance(message, dict) and "progress" in message:
+                    if on_progress is not None:
+                        try:
+                            on_progress(message["progress"])
+                        except Exception:  # pragma: no cover
+                            log.warning("progress callback failed; continuing", exc_info=True)
+                    continue
+                result = message
+                break
             worker.tasks += 1
             if not result.get("ok"):
                 raise WorkerFailure(result["kind"], result["message"], result.get("diagnostics"))

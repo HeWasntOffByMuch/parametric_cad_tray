@@ -446,6 +446,8 @@ def _job_response(job: Job) -> JobResponse:
         id=job.id,
         state=job.state,
         kind=job.kind,
+        progress=job.progress,
+        stage=job.stage,
         status=job.status,
         params_hash=job.params_hash,
         cache_key=job.cache_key,
