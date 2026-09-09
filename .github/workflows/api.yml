@@ -261,15 +261,44 @@ jobs:
           \$COMPOSE ps
           EOF
 
+      # Answers the question the public smoke cannot: is the container itself
+      # right? Splitting it means a failure below is unambiguously the proxy or
+      # the certificate, never the API.
+      - name: Check the API answers on the host
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_PORT }}
+          API_BIND: ${{ vars.TRAYMOLD_API_BIND }}
+        run: |
+          BIND="${API_BIND:-127.0.0.1:8000}"
+          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" "$USER@$HOST" \
+            "curl -fsS --max-time 15 http://${BIND}/api/health" | python3 -m json.tool
+
       - name: Smoke the live deployment
         env:
           DOMAIN: ${{ vars.TRAYMOLD_API_DOMAIN }}
           ORIGINS: ${{ vars.TRAYAPI_ALLOWED_ORIGINS }}
+          PROXY: ${{ vars.TRAYMOLD_PROXY }}
+          API_BIND: ${{ vars.TRAYMOLD_API_BIND }}
         run: |
           base="https://${DOMAIN}"
-          # A brand new host is waiting on Let's Encrypt here, not on the API.
-          for i in $(seq 1 40); do
+          # In caddy mode a first deploy is waiting on Let's Encrypt, which can
+          # take minutes. In external mode a working proxy answers at once, so a
+          # long wait here only delays a diagnosis that is already certain.
+          if [ "${PROXY:-caddy}" = "external" ]; then tries=8; else tries=40; fi
+          for i in $(seq 1 $tries); do
             curl -fsS --max-time 10 "$base/api/health" >/dev/null && break
-            echo "waiting for $base ($i/40)"; sleep 15
+            echo "waiting for $base ($i/$tries)"; sleep 15
           done
+
+          if ! curl -fsS --max-time 10 "$base/api/health" >/dev/null; then
+            if [ "${PROXY:-caddy}" = "external" ]; then
+              echo "::error::The API is healthy on the VPS at ${API_BIND:-127.0.0.1:8000}, but $base does not answer. The proxy that owns 443 on that host is not forwarding to it yet - add a vhost per 'Behind a proxy you already run' in docs/deployment.md."
+            else
+              echo "::error::$base does not answer. Caddy has not obtained a certificate: check that $DOMAIN resolves to this VPS and that port 80 is reachable, then read 'docker compose logs caddy' on the host."
+            fi
+            exit 1
+          fi
+
           ORIGIN="${ORIGINS%%,*}" ./deploy/smoke.sh "$base"
