@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
     paths: ['packages/web/**', '.github/workflows/pages.yml']
+  # The page bakes in the API URL at build time, and that URL comes from a
+  # repository variable rather than from this repository - so a frontend built
+  # before the API moved keeps calling the old address, with nothing in the diff
+  # to say so. Rebuilding after every successful API deploy keeps the two ends
+  # pointing at each other whatever changed underneath.
+  workflow_run:
+    workflows: ["Deploy API to the VPS"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -18,6 +27,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A failed API deploy leaves the old API running, so there is nothing new to
+    # point at and no reason to republish.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
