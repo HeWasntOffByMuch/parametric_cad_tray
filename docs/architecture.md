@@ -303,9 +303,8 @@ Milestone order, as specified:
 | 11 | STEP / STL export | done — `traymold/exporters.py` |
 | 12 | fidelity tests against the original STEP | done — `tests/test_reference_fidelity.py` |
 
-Not started, deliberately: FastAPI, React, R3F, job queue, caching. Those wait
-until the core relationship is correct and tested, which is what §4.4 and the
-test suite establish.
+**The API layer is now implemented** — see [`api.md`](./api.md). React, R3F and
+the production parameter form are still deliberately not started.
 
 ### 5.1 Package layout
 
@@ -319,7 +318,8 @@ packages/tray-core/
     mold.py       the pipeline of §2, one function per step
     exporters.py  STEP / STL
     presets.py    ref-4x7 and ref-4x7-step
-    cli.py        traymold build|derive|schema|presets|version
+    api.py        the frozen application-facing interface
+    cli.py        traymold build|derive|validate|schema|presets|version
   tests/
     test_blend_template.py       the template's poles, curvature and area
     test_profiles.py             every profile family builds and offsets

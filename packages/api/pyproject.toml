@@ -1,0 +1,10 @@
+[project]
+name = "trayapi"
+version = "0.1.0"
+description = "FastAPI layer over the traymold geometry core"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.110", "uvicorn>=0.29", "traymold"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: runs a real geometry build in a worker process"]

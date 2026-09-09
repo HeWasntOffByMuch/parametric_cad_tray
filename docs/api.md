@@ -1,0 +1,263 @@
+# API Layer
+
+Status: **implemented**. The React UI is not, deliberately.
+
+The API is a transport for `traymold.api`. It contains no CAD logic, and the
+FastAPI process never imports cadquery — the only geometry it touches is the
+cheap half of the core interface (validate, derive, hash), which is pure Python.
+
+```
+parameters
+    ↓ validate                 geometry-free, ~1.9 ms
+    ↓ canonical parameter hash
+    ↓ cache?
+   yes → artifact              ~5 ms (preview)
+   no  → worker process        one build, one process
+          ↓ build + emit
+          ↓ artifact
+```
+
+---
+
+## 1. The frozen core interface
+
+`traymold/api.py` is the only surface an application uses.
+
+```python
+validate(params, quality=None, parts=None) -> ValidationResult
+build(params, quality=None, parts=None)    -> BuildResult      # owns OCC solids
+emit(result, outdir, formats)              -> list[Artifact]   # solids -> files
+build_and_emit(params, quality, parts, formats, outdir) -> BuildReport   # worker unit
+params_hash(params, **extra) -> str
+environment() -> dict
+json_schema() / defaults() / apply_options()
+```
+
+`build` and `emit` stay separate: one build serves several formats, and a build
+with no filesystem is a useful thing for tests. `build_and_emit` is the unit of
+work a worker performs, and returns `BuildReport` — plain data plus artifact
+paths.
+
+**OCC objects never cross a process boundary.** Pickling a `cq.Solid` was
+measured and does work — 128 KB, exact volume roundtrip — so it is *safe*. It is
+not *useful*: the caller only ever wants artifacts, and receiving a solid would
+force the API process to import cadquery (3.1 s) and hold OCC objects in its
+event loop. The worker that owns the solids writes the files.
+
+`apply_options` folds a caller's `quality` and `parts` into the parameter
+document before anything is hashed, so `build(params, quality="preview")` and
+`params.with_quality("preview")` are the same request and share one cache entry.
+
+---
+
+## 2. API contract
+
+| method | path | success | notes |
+|---|---|---|---|
+| GET | `/api/schema` | 200 | JSON Schema generated from `Params`, defaults, UI hints, versions |
+| GET | `/api/presets` | 200 | `ref-4x7` (STL revision), `ref-4x7-step` (STEP revision) |
+| GET | `/api/version` | 200 | api / schema / model / cadquery / OCP |
+| POST | `/api/validate` | 200 | `{valid, diagnostics[], derived{}, params_hash, …}` |
+| POST | `/api/preview` | **202** job, **200** on a cache hit | preview quality → GLB |
+| POST | `/api/export` | **202** job, **200** on a cache hit | export quality → STEP + STL |
+| GET | `/api/jobs/{id}` | 200 / 404 | job state |
+| POST | `/api/jobs/{id}/cancel` | 200 / 404 | |
+| GET | `/api/artifacts/{key}/{name}` | 200 / 404 | one file |
+| GET | `/api/artifacts/{key}/bundle.zip` | 200 / 404 | every artifact + `result.json` |
+| GET | `/` | 200 | developer harness, not the product UI |
+
+Invalid parameters return **422** with
+`{"detail": {"error": {kind, message, diagnostics[]}}}` and **never enqueue a
+build**.
+
+The artifact endpoints are additions to the requested list: a job hands back
+URLs, so something has to serve them. Both single files and a zip are offered, so
+a caller can take one part or the pair.
+
+There is exactly one authoritative schema. `test_schema.py` asserts the served
+document is byte-identical to `Params.model_json_schema()`; UI hints live in a
+separate `ui_hints` key and never leak into it.
+
+### 3MF
+Not shipped. STEP and STL both come free from CadQuery; 3MF needs `lib3mf` or a
+`trimesh` round-trip through the tessellation, and the milestone said not to let
+it delay the API. It is a self-contained addition to `exporters.write_artifacts`.
+
+---
+
+## 3. Worker architecture
+
+Workers are **subprocesses**, not `multiprocessing.Process` children and not
+threads.
+
+Threads are out because OCC can abort the interpreter and is not thread-safe.
+`multiprocessing` was tried and abandoned: every start method re-imports the
+parent's `__main__` in the child, which is fine under `uvicorn` and fatal under
+pytest or any script whose `__main__` is not import-safe — the API must not care
+how it was launched. A `subprocess` plus a `multiprocessing.connection` socket
+keeps the same pickled duplex channel with none of that coupling, and gives a
+real `kill()`.
+
+```
+FastAPI process                     worker process (× N, persistent)
+  JobManager                          python -m trayapi.worker_main
+    thread per job  ──socket──►         imports traymold once (3.1 s)
+    poll / timeout  ◄────────           build_and_emit → BuildReport
+```
+
+| requirement | how |
+|---|---|
+| one build per worker process | a worker serves one request at a time; the pool hands out idle workers |
+| structured exceptions | the worker classifies and sends `{kind, message, diagnostics}`; the traceback stays in its stderr |
+| a crash must not crash FastAPI | the parent watches `Popen.poll()`; a dead worker becomes `worker_crash` and is replaced |
+| build timeout | the parent polls with a deadline and `kill()`s the worker; default 120 s |
+| worker recycling | replaced after `max_tasks` builds (default 24) — OCC leaks steadily |
+| no raw OCC traces in responses | only the mapped kinds below ever leave the process |
+
+Pre-warming matters: importing traymold costs 3.1 s, so cold workers would
+dominate a 2.5 s preview. Workers are started and warmed at app startup
+(3.45 s total).
+
+### Error mapping
+
+| kind | raised by |
+|---|---|
+| `validation_error` | `traymold.validate.ValidationError` (also caught before dispatch) |
+| `geometry_build_error` | `ProfileError`, and anything else the kernel throws |
+| `offset_verification_failure` | `profiles.OffsetError` — the realised gap check |
+| `timeout` | the parent's deadline |
+| `worker_crash` | the worker process died |
+| `export_failure` | `OSError` and friends while writing artifacts |
+| `cancelled` | a cancel arrived before or during the build |
+
+---
+
+## 4. Cache key
+
+```
+cache_key = sha256(canonical_json({
+    params:  canonical parameters, minus non-geometric fields,
+             with the requested quality and part selection already folded in,
+    env:     {schema_version, model_version, cadquery, OCP},
+    formats: sorted set of requested artifact formats,
+}))
+```
+
+* `quality` and `parts` are **not** separate terms — `apply_options` folds them
+  into the parameter document first, so the two ways of expressing the same
+  request hash identically. Tested.
+* `name` is excluded (`NON_GEOMETRIC_FIELDS`): two users who label the same
+  design differently share one build.
+* `environment()` reads the version module at call time, so a `MODEL_VERSION`
+  bump or a kernel upgrade invalidates every key. Both tested.
+
+Layout: `CACHE_DIR/<key>/{result.json, preview.glb, male.step, …, bundle.zip}`.
+A hit requires `result.json` and every artifact it lists to exist. **Failed
+builds are never cached.**
+
+### Concurrent deduplication
+`JobManager` keeps `cache_key → job_id` for in-flight jobs under a lock. A second
+request for a key already building attaches to that job rather than starting a
+second one. `test_concurrent_identical_requests_deduplicate_to_one_build` fires
+four simultaneous requests through a counting pool and asserts exactly one build.
+
+---
+
+## 5. Job lifecycle
+
+```
+submit ─┬─ cache hit ──────────────────────────► complete (cached, HTTP 200)
+        ├─ in-flight same key ─────────────────► that job's id
+        └─ new ─► queued ─► running ─┬────────► complete
+                                     ├────────► failed    (structured error)
+                                     └────────► cancelled
+        queued ─► cancelled  (always)
+        running ─► cancelled (the worker is terminated)
+```
+
+`progress` is always `null`. The core exposes no meaningful stages, and a
+fabricated percentage would be a lie; `status` carries a short message
+(`queued`, `building geometry`, `served from cache`, `done`) for a spinner.
+
+Cancellation works in both states: queued work never starts, and a running build
+is stopped by killing its worker — practical here precisely because each build
+owns a whole process.
+
+---
+
+## 6. Preview artifact
+
+One GLB per build, holding **both halves as separate named nodes**:
+
+```
+node "tray-mold"
+ ├── node "male"    → mesh "male"
+ └── node "female"  → mesh "female"
+```
+
+so the future viewer can show, hide and transform them independently. The frame
+is the core's canonical one — origin at the plan centre on the parting plane, +Z
+the plug direction — and both halves are emitted in assembly position, so the
+mold reads as closed with no client-side transform.
+
+It comes from the same `build()` as an export, at preview quality. There is no
+second, browser-side approximation of the tray. Preview's ≤50 µm contract is
+tested in the core suite and unaffected by the API.
+
+`asset.extras` carries `params_hash`, `schema_version`, `model_version` and
+`quality`.
+
+---
+
+## 7. Export artifacts
+
+STEP is the CAD reference, STL the slicer export, one file per part.
+Traceability goes into whatever channel each format allows:
+
+| format | channel |
+|---|---|
+| STEP | a comment before `FILE_DESCRIPTION` with `params_hash`, schema, model, quality |
+| STL | the 80-byte binary header: `traymold <model_version> <hash[:24]>` |
+| GLB | `asset.extras` |
+
+Export geometry is never degraded for latency: export quality is fixed at
+`max_section_sagitta = 0.002 mm` regardless of API load.
+
+---
+
+## 8. Measured latency
+
+`packages/api/bench/benchmark_api.py`, median of 3, geometry and artifact times
+taken from the worker's own report so the remainder is genuinely the API's.
+
+| operation | total | submit | geometry | artifacts | IPC | download | **API overhead** |
+|---|---|---|---|---|---|---|---|
+| validate | **1.9 ms** | — | — | — | — | — | 1.9 ms |
+| preview, cache miss | 3413 ms | 3.1 | 3291 | 41.1 | 70.6 | 2.6 | **7.7 ms** |
+| preview, cache hit | **4.8 ms** | 2.5 | — | — | — | 2.3 | 2.5 ms |
+| export, cache miss | 6044 ms | 3.2 | 5435 | 193.4 | 391.7 | 16.7 | **7.1 ms** |
+| export, cache hit | **18.4 ms** | 2.6 | — | — | — | 15.8 | 2.6 ms |
+
+App startup including worker warm-up: 3.45 s.
+
+The API adds ~7 ms to a build — 0.2 % of a preview, 0.1 % of an export. The core
+baseline it wraps is 2.5 s / 5.4 s; the extra ~0.9 s and ~0.6 s here are the
+benchmark's own polling client competing for the GIL, visible as the IPC column.
+
+`validate` at 1.9 ms is comfortably keystroke-rate. It got there by memoising the
+base profile's curvature limits per profile spec — the models are immutable, so
+the answer cannot go stale — which took the core call from 12 ms to 0.06 ms.
+
+---
+
+## 9. Draft stays experimental
+
+Nonzero `tray.draft_angle` is refused with `E-DRAFT-EXPERIMENTAL` unless the
+request sets `allow_experimental: true`. The message states what the current
+implementation actually holds — a constant profile-plane gap, so the normal gap
+is `nominal × cos(draft_angle)` — and that the contract is undecided. The UI hint
+for the field carries the same warning.
+
+Nothing was changed in the geometry. If the normal-gap contract is chosen later,
+the correction is to scale the offset by `1/cos θ`, which is a new behaviour and
+must not silently redefine existing parameters.

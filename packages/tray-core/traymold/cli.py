@@ -66,8 +66,10 @@ def main(argv=None) -> int:
         print(json.dumps(derive(params).as_dict(), indent=2))
         return 0
 
+    from .api import build as api_build
+
     t0 = time.time()
-    result = build(params)
+    result = api_build(params)
     elapsed = time.time() - t0
     written = export_all(result, args.outdir, params)
     print(json.dumps({

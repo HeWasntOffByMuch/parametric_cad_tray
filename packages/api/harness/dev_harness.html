@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>traymold dev harness</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, Menlo, monospace; margin: 0; display: grid;
+         grid-template-columns: 380px 1fr; height: 100vh; }
+  aside { padding: 12px; overflow: auto; border-right: 1px solid #ccc; }
+  main { display: grid; grid-template-rows: auto 1fr; }
+  textarea { width: 100%; height: 46vh; font: inherit; }
+  pre { margin: 0; padding: 8px; background: #f6f6f6; overflow: auto; }
+  button { font: inherit; padding: 4px 10px; margin-right: 6px; }
+  model-viewer, iframe { width: 100%; height: 100%; border: 0; }
+  .row { margin: 8px 0; }
+</style>
+<aside>
+  <h3>traymold dev harness</h3>
+  <div class="row">
+    <select id="preset"></select>
+    <button onclick="loadPreset()">load</button>
+  </div>
+  <textarea id="params"></textarea>
+  <div class="row">
+    <button onclick="call('validate')">validate</button>
+    <button onclick="job('preview')">preview</button>
+    <button onclick="job('export')">export</button>
+  </div>
+  <div class="row" id="status">idle</div>
+  <pre id="out" style="height: 28vh"></pre>
+</aside>
+<main>
+  <div class="row" style="padding: 8px" id="links"></div>
+  <model-viewer id="viewer" camera-controls auto-rotate shadow-intensity="1"></model-viewer>
+</main>
+<script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+<script>
+const API = location.origin;
+const out = document.getElementById('out');
+const status = document.getElementById('status');
+const show = (o) => out.textContent = JSON.stringify(o, null, 2);
+
+async function boot() {
+  const presets = await (await fetch(`${API}/api/presets`)).json();
+  const sel = document.getElementById('preset');
+  presets.forEach(p => sel.add(new Option(p.title, p.name)));
+  window._presets = presets;
+  loadPreset();
+  show(await (await fetch(`${API}/api/version`)).json());
+}
+function loadPreset() {
+  const name = document.getElementById('preset').value;
+  const preset = window._presets.find(p => p.name === name);
+  document.getElementById('params').value = JSON.stringify(preset.params, null, 2);
+}
+function body() { return { params: JSON.parse(document.getElementById('params').value) }; }
+
+async function call(path) {
+  status.textContent = path + '...';
+  const r = await fetch(`${API}/api/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body()),
+  });
+  show(await r.json());
+  status.textContent = `${path}: HTTP ${r.status}`;
+}
+
+async function job(kind) {
+  const t0 = performance.now();
+  status.textContent = `${kind}: submitting`;
+  const r = await fetch(`${API}/api/${kind}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body()),
+  });
+  let j = await r.json();
+  if (r.status === 422) { show(j); status.textContent = 'invalid parameters'; return; }
+  while (!['complete', 'failed', 'cancelled'].includes(j.state)) {
+    status.textContent = `${kind}: ${j.status || j.state}`;
+    await new Promise(res => setTimeout(res, 150));
+    j = await (await fetch(`${API}/api/jobs/${j.id}`)).json();
+  }
+  show(j);
+  status.textContent = `${kind}: ${j.state} in ${Math.round(performance.now() - t0)} ms`
+                     + (j.cached ? ' (cached)' : '');
+  const links = document.getElementById('links');
+  links.innerHTML = Object.values(j.artifacts)
+    .map(a => `<a href="${API}${a.url}">${a.name}</a> (${a.bytes} B)`).join(' &middot; ')
+    + (j.bundle_url ? ` &middot; <a href="${API}${j.bundle_url}">bundle.zip</a>` : '');
+  const glb = j.artifacts['preview.glb'];
+  if (glb) document.getElementById('viewer').src = `${API}${glb.url}`;
+}
+boot();
+</script>

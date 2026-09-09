@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from functools import lru_cache
+
 from .derive import forming_gap
 from .profiles import curvature_limits, make_base_profile
 
@@ -91,14 +93,34 @@ def validate(params, *, with_geometry: bool = True) -> list[Diagnostic]:
     return out
 
 
+@lru_cache(maxsize=256)
+def _limits_for(profile_json: str) -> dict | str:
+    """Curvature limits for a profile spec.
+
+    Memoised on the spec's canonical JSON: profile models are immutable, so the
+    answer cannot go stale, and validation is called on every keystroke while
+    building the 2D profile and reading its curvature costs ~12 ms.
+    """
+    import json
+
+    from .params import ProfileSpec  # noqa: F401
+    from pydantic import TypeAdapter
+
+    spec = TypeAdapter(ProfileSpec).validate_python(json.loads(profile_json))
+    try:
+        return curvature_limits(make_base_profile(spec))
+    except ValueError as exc:
+        return str(exc)
+
+
 def _geometric_diagnostics(params, treatments, gap) -> list[Diagnostic]:
     """Rules that need the base profile's actual curvature."""
+    import json
+
     out: list[Diagnostic] = []
-    try:
-        base = make_base_profile(params.tray.profile)
-    except ValueError as exc:
-        return [Diagnostic("E-SHAPE-001", "error", "tray.profile", str(exc))]
-    limits = curvature_limits(base)
+    limits = _limits_for(json.dumps(params.tray.profile.model_dump(mode="json"), sort_keys=True))
+    if isinstance(limits, str):
+        return [Diagnostic("E-SHAPE-001", "error", "tray.profile", limits)]
 
     # E-GAP-025: the forming gap is an OUTWARD offset.  For a convex profile the
     # outward limit is infinite, so this fires only for a profile with a concave
