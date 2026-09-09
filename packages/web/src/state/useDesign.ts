@@ -247,6 +247,25 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     [autoPreview, generatePreview, previewIdleMs, validation?.valid],
   )
 
+  // -- the first preview ----------------------------------------------------
+  // Someone who has just opened the page has not decided to preview anything;
+  // they have arrived at a design - a preset, a shared link, or what they had
+  // last time - and an empty viewport asking them to press Update preview makes
+  // them confirm a choice they never made. So the design is on screen as soon as
+  // it is known.
+  //
+  // Keyed on the parameters rather than on `initial` so that it cannot run
+  // before paramsRef holds the design generatePreview is about to read, and
+  // scheduled through the same idle timer as every other build, so a user who
+  // starts editing within the first moment supersedes it rather than racing it.
+  const built = useRef(false)
+  useEffect(() => {
+    if (built.current) return
+    if (!params || Object.keys(params).length === 0) return
+    built.current = true
+    scheduleIdlePreview(0)
+  }, [params, scheduleIdlePreview])
+
   const setParams = useCallback(
     (next: Json) => {
       setParamsState(next)
