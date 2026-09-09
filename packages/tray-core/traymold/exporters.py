@@ -79,12 +79,22 @@ def export_glb(result, path: Path, quality: Quality) -> Path:
     return path
 
 
+#: glTF defaults metallicFactor to 1.0 when a material omits it, and CadQuery's
+#: exporter writes only baseColorFactor.  A fully metallic surface has no diffuse
+#: term at all: with no environment map to reflect - and a static page has none -
+#: it renders very nearly black, whatever lights are in the scene.  These are
+#: printed plastic, so say so, in the artifact rather than in one viewer.
+_GLB_MATERIAL = {"metallicFactor": 0.0, "roughnessFactor": 0.55}
+
+
 def _stamp_glb(path: Path, trace: dict) -> None:
     """Write traceability into the glTF `asset.extras`, rewriting the JSON chunk."""
     raw = path.read_bytes()
     json_len = struct.unpack("<I", raw[12:16])[0]
     doc = json.loads(raw[20 : 20 + json_len])
     doc.setdefault("asset", {}).setdefault("extras", {}).update(trace)
+    for material in doc.get("materials", []):
+        material.setdefault("pbrMetallicRoughness", {}).update(_GLB_MATERIAL)
     body = raw[20 + json_len :]
     chunk = json.dumps(doc, separators=(",", ":")).encode()
     chunk += b" " * ((4 - len(chunk) % 4) % 4)

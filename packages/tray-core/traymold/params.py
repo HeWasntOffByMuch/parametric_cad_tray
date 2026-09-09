@@ -28,8 +28,13 @@ class _Model(BaseModel):
 # 1. base plan profiles - named for the curve construction they actually use
 # --------------------------------------------------------------------------
 class _RectProfileBase(_Model):
-    length: float = Field(gt=0, le=1000, description="plan length, X, mm")
-    width: float = Field(gt=0, le=1000, description="plan width, Y, mm")
+    # Defaulted, not merely constrained.  A schema-driven form builds a new
+    # variant's document from the schema's defaults, carrying over only the
+    # fields the previous variant also had - so a required field with no default
+    # is emitted as nothing at all, and the switch fails validation before the
+    # user has touched it.  The reference plan is the natural starting point.
+    length: float = Field(default=175.0, gt=0, le=1000, description="plan length, X, mm")
+    width: float = Field(default=105.0, gt=0, le=1000, description="plan width, Y, mm")
 
 
 class G2QuinticRectProfile(_RectProfileBase):
@@ -38,7 +43,8 @@ class G2QuinticRectProfile(_RectProfileBase):
     STEP; not a conic and not approximable by one within 0.23 mm at s = 52.5."""
 
     kind: Literal["g2_quintic_rect"] = "g2_quintic_rect"
-    corner_setback: float = Field(ge=0, description="setback from the sharp corner, mm")
+    corner_setback: float = Field(default=25.0, ge=0,
+                                  description="setback from the sharp corner, mm")
 
     @property
     def corner_style(self) -> str:
@@ -64,7 +70,8 @@ class ConicRectProfile(_RectProfileBase):
     """Rectangle with rational-quadratic (conic) corners.  rho = 0.5 is the parabola."""
 
     kind: Literal["conic_rect"] = "conic_rect"
-    corner_setback: float = Field(ge=0)
+    corner_setback: float = Field(default=25.0, ge=0,
+                                  description="setback from the sharp corner, mm")
     rho: float = Field(default=0.5, gt=0.0, lt=1.0)
 
     @property
@@ -89,7 +96,7 @@ class CircularRectProfile(_RectProfileBase):
     """Conventional rounded rectangle: constant-radius circular corners."""
 
     kind: Literal["circular_rect"] = "circular_rect"
-    corner_radius: float = Field(ge=0)
+    corner_radius: float = Field(default=25.0, ge=0)
 
     @property
     def corner_setback(self) -> float:
@@ -128,7 +135,12 @@ class EllipseProfile(_RectProfileBase):
 
 class SuperellipseProfile(_RectProfileBase):
     kind: Literal["superellipse"] = "superellipse"
-    exponent: float = Field(default=4.0, gt=1.0, le=20.0)
+    #: Bounded by what a single C2 spline can actually follow.  A superellipse
+    #: has no exact NURBS form; past roughly 4.6 at this plan size the fit drifts
+    #: outside the 10 um the profile is held to, and `superellipse_wire` refuses
+    #: it with the measured error.  Larger plans reach ~5.8, which is why the
+    #: schema stops at 6 rather than at the smaller number.
+    exponent: float = Field(default=4.0, gt=1.0, le=6.0)
 
     @property
     def corner_setback(self) -> float:

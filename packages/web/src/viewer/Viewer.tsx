@@ -23,9 +23,10 @@ export interface ViewerProps {
  * approximation of the tray exists in the browser.
  *
  * The model is authored Z-up in millimetres (origin at the plan centre on the
- * parting plane, +Z the plug direction). The scene is rotated -90 degrees about
- * X so that CAD +Z becomes screen up, and the camera is fitted to the model's
- * real bounding box, so a 235 mm plate frames the same way as a 500 mm one.
+ * parting plane, +Z the plug direction), and the exporter puts the Z-up to Y-up
+ * conversion on the assembly's root node, so the loaded scene is already
+ * oriented and this file adds no rotation of its own. The camera is fitted to
+ * the real bounding box, so a 235 mm plate frames like a 500 mm one.
  */
 /** Which named GLB nodes are visible, given the controls. Pure, so the rule is
  *  testable without a WebGL context. */
@@ -45,7 +46,7 @@ export function explodeOffset(viewMode: ViewMode): number {
   return viewMode === 'exploded' ? 60 : 0
 }
 
-function MoldScene({ url, partMode, viewMode, showMale, showFemale }: Omit<ViewerProps, 'stale' | 'resetToken'> & { url: string }) {
+function MoldScene({ url, partMode, viewMode, showMale, showFemale, setExtent }: Omit<ViewerProps, 'stale' | 'resetToken'> & { url: string; setExtent: (r: number) => void }) {
   const { scene } = useGLTF(apiUrl(url))
   const cloned = useMemo(() => scene.clone(true), [scene])
   const { camera, controls } = useThree() as any
@@ -75,22 +76,49 @@ function MoldScene({ url, partMode, viewMode, showMale, showFemale }: Omit<Viewe
     const radius = Math.max(size.x, size.y, size.z) * 0.85
     const fov = ((camera as THREE.PerspectiveCamera).fov * Math.PI) / 180
     const distance = radius / Math.sin(fov / 2)
-    camera.position.set(centre.x + distance * 0.7, centre.z + distance * 0.5, centre.y + distance * 0.7)
-    camera.near = distance / 100
-    camera.far = distance * 20
+    // Plain world coordinates: the box already reflects the GLB's own Y-up
+    // rotation, so there is nothing left to convert here.
+    camera.position.set(
+      centre.x + distance * 0.62,
+      centre.y + distance * 0.55,
+      centre.z + distance * 0.62,
+    )
+    // Clip to what is actually in front of the camera. A near/far spread wider
+    // than the scene needs spends depth-buffer precision on empty space, and the
+    // grid - a large coplanar surface at a shallow angle - is the first thing to
+    // shimmer when it runs out.
+    camera.near = Math.max(distance * 0.01, (distance - radius) * 0.5)
+    camera.far = (distance + radius) * 4
     camera.updateProjectionMatrix()
     if (controls) {
-      controls.target.set(centre.x, centre.z, -centre.y)
+      controls.target.copy(centre)
       controls.update()
     }
-  }, [cloned, camera, controls])
+    setExtent(radius)
+  }, [cloned, camera, controls, setExtent])
 
-  return <primitive object={cloned} rotation={[-Math.PI / 2, 0, 0]} />
+  // No rotation here. CadQuery's glTF exporter already writes the Z-up to Y-up
+  // conversion onto the assembly's root node (a -90 degree quaternion about X),
+  // so rotating again turned the whole 180 degrees and stood the plate on its
+  // edge. The mesh data stays Z-up, which is why the explode offset above is
+  // still along the parts' local Z - that is the press axis.
+  return <primitive object={cloned} />
+}
+
+/** Grid spacing that suits the model rather than the scene's units: a 60 mm tray
+ *  and a 500 mm one should both get a readable number of squares. */
+export function gridSpacing(radius: number): { cell: number; section: number; extent: number } {
+  const target = Math.max(radius, 1) / 12
+  const steps = [1, 2, 5, 10, 20, 25, 50, 100]
+  const cell = steps.find((s) => s >= target) ?? 100
+  return { cell, section: cell * 5, extent: Math.max(radius, 1) * 4 }
 }
 
 export function Viewer(props: ViewerProps) {
   const [key, setKey] = useState(0)
+  const [radius, setRadius] = useState(150)
   useEffect(() => setKey((k) => k + 1), [props.resetToken])
+  const grid = gridSpacing(radius)
 
   return (
     <Canvas
@@ -103,20 +131,30 @@ export function Viewer(props: ViewerProps) {
       <hemisphereLight intensity={0.75} groundColor="#20242c" />
       <directionalLight position={[300, 500, 400]} intensity={1.6} castShadow />
       <directionalLight position={[-400, 200, -300]} intensity={0.5} />
+      {/* Sized to the model and finite. An infinite grid keeps drawing cells out
+          to the fade distance, and at a shallow angle those far cells alias into
+          a shimmer that reads as the whole floor shaking whenever the camera
+          moves - which, with damping, continues after the drag ends. Ending the
+          grid a few model-radii out removes the aliasing rather than hiding it. */}
       <Grid
-        args={[1200, 1200]}
-        cellSize={10}
+        args={[grid.extent, grid.extent]}
+        cellSize={grid.cell}
         cellColor="#2a3038"
-        sectionSize={50}
+        sectionSize={grid.section}
         sectionColor="#3a434f"
-        position={[0, -20, 0]}
-        infiniteGrid
-        fadeDistance={1800}
+        position={[0, -radius * 0.12, 0]}
+        fadeDistance={grid.extent}
+        fadeStrength={1.5}
       />
       <Suspense fallback={null}>
-        {props.url && <MoldScene key={`${props.url}-${key}`} {...props} url={props.url} />}
+        {props.url && (
+          <MoldScene key={`${props.url}-${key}`} {...props} url={props.url} setExtent={setRadius} />
+        )}
       </Suspense>
-      <OrbitControls makeDefault enableDamping dampingFactor={0.12} />
+      {/* Damping at 0.12 coasts for several seconds after a drag; the camera is
+          still moving that whole time. 0.25 keeps the motion smooth but settles
+          quickly, so the scene is actually still when it looks still. */}
+      <OrbitControls makeDefault enableDamping dampingFactor={0.25} />
     </Canvas>
   )
 }

@@ -94,3 +94,20 @@ def test_preview_is_materially_faster(export_build, preview_build):
         return time.perf_counter() - t0
 
     assert timed("preview") < timed("export")
+
+
+# --------------------------------------------------------------------------
+# tessellation: what the eye and the slicer actually see
+# --------------------------------------------------------------------------
+def test_deflections_bound_the_visible_crease_not_just_the_sagitta():
+    """A chord error alone does not bound faceting.
+
+    0.05 mm of sagitta on this profile's ~52 mm radius is a 4.6 mm chord, which
+    reads as a flat panel however small the sagitta is. Both deflections have to
+    come down together, and export has to be the finer of the two.
+    """
+    export, preview = DEFAULTS["export"], DEFAULTS["preview"]
+    assert export.angular_deflection <= 0.05
+    assert preview.angular_deflection <= 0.15
+    assert export.angular_deflection < preview.angular_deflection
+    assert export.linear_deflection < preview.linear_deflection

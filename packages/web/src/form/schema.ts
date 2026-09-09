@@ -268,6 +268,23 @@ export function setValue(doc: Json, path: string, value: any): Json {
   return { ...doc, [head]: setValue(doc[head] ?? {}, rest.join('.'), value) }
 }
 
+/** A last-resort value for a field the schema left without a default. */
+function fallbackFor(field: Field): any {
+  switch (field.kind) {
+    case 'number':
+    case 'integer':
+      return field.minimum ?? field.exclusiveMinimum ?? 0
+    case 'boolean':
+      return false
+    case 'enum':
+      return field.options?.[0] ?? null
+    case 'text':
+      return ''
+    default:
+      return null
+  }
+}
+
 /** Build a default value document for one variant of a discriminated union. */
 export function variantDefaults(field: Field, key: string, previous: Json | undefined): Json {
   const variant = field.variants?.find((v) => v.key === key)
@@ -275,7 +292,12 @@ export function variantDefaults(field: Field, key: string, previous: Json | unde
   const next: Json = { [field.discriminator ?? 'kind']: key }
   for (const child of variant.fields) {
     const carried = previous?.[child.name]
-    next[child.name] = carried !== undefined ? carried : child.default
+    const value = carried !== undefined ? carried : child.default
+    // A required field with no schema default would otherwise be emitted as
+    // undefined, dropped by JSON.stringify, and rejected as missing before the
+    // user has touched the form. The schema now defaults every such field; this
+    // keeps a future one from failing silently the same way.
+    next[child.name] = value !== undefined ? value : fallbackFor(child)
   }
   return next
 }

@@ -168,6 +168,40 @@ def _clean(shape):
         return shape
 
 
+#: Booleans are allowed to be approximate; they are not allowed to be wrong.
+#: OCC signals a failed fuse or cut by returning a valid but empty - or wildly
+#: undersized - shape rather than by raising, so nothing downstream notices. An
+#: ellipse male came out at 70 cm3 instead of 1010 and still exported a
+#: printable STL. Every boolean here is bounded by the one thing that is certain
+#: about it: a fuse cannot shrink a solid and a cut cannot grow one.
+#:
+#: The slack has to clear OCC's own re-approximation of tangent spline faces - a
+#: superellipse root blend loses 0.1% legitimately - while still catching what
+#: this is for. The failures it must catch are not subtle: an ellipse root blend
+#: returning nothing at all, a superellipse cavity cut returning nothing, and the
+#: historical floor-blend slivers that quietly ate 39% of the male. 1% sits an
+#: order of magnitude clear of the noise and nearly two below the faults.
+_BOOLEAN_SLACK = 1e-2
+
+
+def _checked(result, *, what: str, at_least: float = 0.0, at_most: float | None = None,
+             remedy: str = ""):
+    volume = _volume(result)
+    if volume <= 0.0:
+        raise BuildError(f"{what} produced an empty solid{remedy}")
+    if volume < at_least * (1.0 - _BOOLEAN_SLACK):
+        raise BuildError(
+            f"{what} produced {volume / 1000:.1f} cm3, below the {at_least / 1000:.1f} cm3 "
+            f"it started from - the boolean did not converge on this profile"
+        )
+    if at_most is not None and volume > at_most * (1.0 + _BOOLEAN_SLACK):
+        raise BuildError(
+            f"{what} produced {volume / 1000:.1f} cm3, above the {at_most / 1000:.1f} cm3 "
+            f"ceiling - the boolean did not converge on this profile"
+        )
+    return result
+
+
 def _loft(wires: list[cq.Wire], *, solid: bool = True, ruled: bool = False) -> cq.Solid:
     ts = BRepOffsetAPI_ThruSections(solid, ruled, 1e-6)
     for w in wires:
@@ -234,7 +268,9 @@ def build_male_from_profile(family: ProfileFamily, params) -> cq.Solid:
         {"heights": np.linspace(0.0, depth, n), "lateral": lambda z: 0.0},
     )
     plate = _plate(params, -params.mold.base_plate_thickness, 0.0)
-    return cq.Solid(_clean(plate.fuse(plug)).wrapped)
+    fused = _checked(plate.fuse(plug), what="male plate + plug",
+                     at_least=max(_volume(plate), _volume(plug)))
+    return cq.Solid(_clean(fused).wrapped)
 
 
 def build_female_from_profile(family: ProfileFamily, params) -> cq.Solid:
@@ -249,7 +285,8 @@ def build_female_from_profile(family: ProfileFamily, params) -> cq.Solid:
         {"heights": np.linspace(-1.0, t + 1.0, n), "lateral": lambda z: 0.0},
     )
     plate = _plate(params, 0.0, t)
-    return cq.Solid(_clean(plate.cut(cavity)).wrapped)
+    cut = _checked(plate.cut(cavity), what="female cavity cut", at_most=_volume(plate))
+    return cq.Solid(_clean(cut).wrapped)
 
 
 # --------------------------------------------------------------------------
@@ -269,7 +306,14 @@ def apply_male_root_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq.
         t.size,
         {"heights": t.size - hs[::-1], "lateral": lambda z: law.lateral(t.size - z)[0]},
     )
-    return cq.Solid(_clean(solid.fuse(collar)).wrapped)
+    fused = _checked(
+        solid.fuse(collar), what="male root blend", at_least=_volume(solid),
+        # Known: the ellipse profile fails here and nowhere else. Every other
+        # step of an elliptical mold builds, so name the one thing to change.
+        remedy=". Set mold.male_root_blend to none, or use a rounded-rectangle "
+               "profile - an ellipse is the one plan curve this blend cannot fuse to",
+    )
+    return cq.Solid(_clean(fused).wrapped)
 
 
 def apply_male_floor_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq.Solid:
@@ -299,7 +343,11 @@ def apply_male_floor_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq
     # ring (band - kept) out of the solid instead is 6.9x slower (5.43 s vs
     # 0.79 s) and lands further from the analytic volume, because the ring is a
     # thin spline shell and OCC struggles with it.
-    return cq.Solid(_clean(solid.cut(band).fuse(kept)).wrapped)
+    before = _volume(solid)
+    trimmed = _checked(solid.cut(band), what="male floor blend, band removal", at_most=before)
+    capped = _checked(solid.cut(band).fuse(kept), what="male floor blend, cap",
+                      at_least=_volume(trimmed), at_most=before)
+    return cq.Solid(_clean(capped).wrapped)
 
 
 def apply_female_entry_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq.Solid:
@@ -326,7 +374,14 @@ def apply_female_entry_blend(solid: cq.Solid, family: ProfileFamily, params) -> 
             lateral_fn = lambda z, z1=z1, law=law: law.lateral(z1 - max(z, 0.0))[0]
         tool = _prism(family, params, heights[0], heights[-1],
                       {"heights": heights, "lateral": lateral_fn})
-        out = cq.Solid(_clean(out.cut(tool)).wrapped)
+        cut = _checked(
+            out.cut(tool), what="female entry blend", at_most=_volume(out),
+            # Known: the superellipse profile fails here and nowhere else.
+            remedy=". Set mold.female_entry_blend_top and _bottom to none, or use a "
+                   "rounded-rectangle profile - a superellipse is the one plan curve "
+                   "this blend cannot cut against",
+        )
+        out = cq.Solid(_clean(cut).wrapped)
     return out
 
 

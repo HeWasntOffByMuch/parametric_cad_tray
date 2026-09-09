@@ -22,7 +22,7 @@ from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeOffset
 from OCP.GCPnts import GCPnts_QuasiUniformAbscissa
 from OCP.Geom import Geom_BezierCurve, Geom_BSplineCurve
 from OCP.GeomAbs import GeomAbs_Arc, GeomAbs_C2
-from OCP.GeomAPI import GeomAPI_PointsToBSpline
+from OCP.GeomAPI import GeomAPI_PointsToBSpline, GeomAPI_ProjectPointOnCurve
 from OCP.gp import gp_Ax2, gp_Circ, gp_Dir, gp_Pnt
 from OCP.TColgp import TColgp_Array1OfPnt
 from OCP.TColStd import TColStd_Array1OfInteger, TColStd_Array1OfReal
@@ -34,6 +34,16 @@ TOL = 1e-9
 #: distances on spline input, and 0.1 um is two orders below the 10 um tolerance
 #: the offset result is verified against, so the quantisation is immaterial.
 MIN_OFFSET = 1e-4
+
+#: Superellipse sampling and fitting.  Both are chord errors in mm, an order
+#: below the 10 um the profile as a whole is held to.
+_SE_SAGITTA = 2e-3
+_SE_FIT_TOL = 2e-3
+#: The fit is checked against the true curve rather than trusted.  A superellipse
+#: has no exact NURBS form, and above roughly exponent 5 a single C2 spline stops
+#: being able to follow the corner at all - so the fit is measured and refused
+#: rather than handed on to fail later inside a loft.
+_SE_FIT_BUDGET = 1e-2
 
 
 class ProfileError(ValueError):
@@ -166,20 +176,80 @@ def ellipse_wire(length: float, width: float) -> cq.Wire:
     return _wire_from_edges([cq.Edge(BRepBuilderAPI_MakeEdge(elips).Edge())])
 
 
-def superellipse_wire(length: float, width: float, exponent: float, samples: int = 1441) -> cq.Wire:
+def _superellipse_point(t: float, a: float, b: float, n: float) -> tuple[float, float]:
+    ct, st = math.cos(t), math.sin(t)
+    return (a * math.copysign(abs(ct) ** (2.0 / n), ct),
+            b * math.copysign(abs(st) ** (2.0 / n), st))
+
+
+def _chord_sagitta(p0, pm, p1) -> float:
+    ax, ay = p1[0] - p0[0], p1[1] - p0[1]
+    span = ax * ax + ay * ay
+    if span < 1e-18:
+        return 0.0
+    return abs(ax * (p0[1] - pm[1]) - ay * (p0[0] - pm[0])) / math.sqrt(span)
+
+
+def _superellipse_params(a: float, b: float, n: float, tol: float, depth: int = 18) -> list[float]:
+    """Parameters placed where the curve turns, not where it is straight.
+
+    Sampling uniformly in t is what an earlier version did, and it is wrong here:
+    for n > 2 the parameterisation is singular at the quadrant boundaries - dy/dt
+    diverges at t = 0 - so uniform t crowds points along the flats and starves
+    the corners.  The fitter then chases sampling noise into hundreds of poles,
+    and the resulting curve, though accurate, is too tangled to loft through.
+    Bisecting on chord sagitta puts the points where the geometry needs them.
+    """
+    def bisect(t0, t1, p0, p1, level, out):
+        tm = 0.5 * (t0 + t1)
+        pm = _superellipse_point(tm, a, b, n)
+        if level < depth and _chord_sagitta(p0, pm, p1) > tol:
+            bisect(t0, tm, p0, pm, level + 1, out)
+            bisect(tm, t1, pm, p1, level + 1, out)
+        else:
+            out.append(t1)
+
+    # the quadrant boundaries are the singular points: always keep them exactly
+    seeds = [k * math.pi / 2.0 for k in range(5)]
+    params = [seeds[0]]
+    for t0, t1 in zip(seeds[:-1], seeds[1:]):
+        bisect(t0, t1, _superellipse_point(t0, a, b, n),
+               _superellipse_point(t1, a, b, n), 0, params)
+    return params[:-1]
+
+
+def _superellipse_deviation(curve, a: float, b: float, n: float, samples: int = 2000) -> float:
+    """Worst distance from the fitted curve to the superellipse it claims to be."""
+    worst = 0.0
+    for k in range(samples):
+        x, y = _superellipse_point(2.0 * math.pi * k / samples, a, b, n)
+        proj = GeomAPI_ProjectPointOnCurve(gp_Pnt(x, y, 0.0), curve)
+        if proj.NbPoints():
+            worst = max(worst, proj.LowerDistance())
+    return worst
+
+
+def superellipse_wire(length: float, width: float, exponent: float) -> cq.Wire:
     if exponent <= 0:
         raise ProfileError("superellipse exponent must be positive")
-    t = np.linspace(0.0, 2.0 * math.pi, samples)
-    ct, st = np.cos(t), np.sin(t)
-    x = (length / 2.0) * np.sign(ct) * np.abs(ct) ** (2.0 / exponent)
-    y = (width / 2.0) * np.sign(st) * np.abs(st) ** (2.0 / exponent)
-    pts = np.column_stack([x, y])[:-1]
+    a, b = length / 2.0, width / 2.0
+    params = _superellipse_params(a, b, exponent, _SE_SAGITTA)
+    pts = [_superellipse_point(t, a, b, exponent) for t in params]
+
     arr = TColgp_Array1OfPnt(1, len(pts) + 1)
     for i, p in enumerate(pts, 1):
         arr.SetValue(i, _pnt(p))
     arr.SetValue(len(pts) + 1, _pnt(pts[0]))
-    # a fitted profile, unlike the analytic families: tolerance is explicit
-    curve = GeomAPI_PointsToBSpline(arr, 3, 8, GeomAbs_C2, 1e-6).Curve()
+    curve = GeomAPI_PointsToBSpline(arr, 3, 8, GeomAbs_C2, _SE_FIT_TOL).Curve()
+
+    dev = _superellipse_deviation(curve, a, b, exponent)
+    if dev > _SE_FIT_BUDGET:
+        raise ProfileError(
+            f"a superellipse of exponent {exponent:g} cannot be fitted to better than "
+            f"{dev * 1000:.0f} um at {length:g} x {width:g} mm, past the {_SE_FIT_BUDGET * 1000:.0f} um "
+            f"budget the profile is held to. Lower the exponent, or use a "
+            f"circular_rect or g2_quintic_rect profile for a squarer plan."
+        )
     return _wire_from_edges([cq.Edge(BRepBuilderAPI_MakeEdge(curve).Edge())])
 
 

@@ -2,7 +2,7 @@
 
 SCHEMA_VERSION = "2.0.0"
 # Bump whenever the geometry produced for unchanged parameters changes.
-MODEL_VERSION = "0.1.0"
+MODEL_VERSION = "0.2.0"
 
 
 def kernel_versions() -> dict[str, str]:

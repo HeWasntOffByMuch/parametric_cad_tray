@@ -46,8 +46,12 @@ def test_every_profile_builds_a_closed_wire_of_the_right_size(spec):
     wire = make_base_profile(spec)
     assert wire.IsClosed()
     bb = wire.BoundingBox()
-    # superellipse is the one fitted family; the rest are analytic
-    tol = 1e-3 if spec.kind == "superellipse" else 1e-6
+    # The superellipse is the one fitted family - it has no exact NURBS form, so
+    # it is sampled and approximated, and lands a couple of microns proud of the
+    # nominal box. The rest are analytic and exact. 10 um is the budget the whole
+    # profile is held to; the fit is measured against the true curve separately,
+    # in test_a_superellipse_too_square_to_fit_is_refused_by_name.
+    tol = 1e-2 if spec.kind == "superellipse" else 1e-6
     assert bb.xlen == pytest.approx(spec.length, abs=tol)
     assert bb.ylen == pytest.approx(spec.width, abs=tol)
 
@@ -128,3 +132,53 @@ def test_polyline_distance_matches_brute_force():
     assert np.abs(
         prof._polyline_distance(o, prof.resampled(w)) - prof._polyline_distance_exact(o, prof.resampled(w))
     ).max() == 0.0
+
+
+# --------------------------------------------------------------------------
+# every profile family the schema offers must be constructible
+# --------------------------------------------------------------------------
+def test_every_profile_family_builds_a_wire():
+    """The schema offers eight families; a form that lets a user pick one must
+    not hand them a curve the core cannot make."""
+    from traymold.params import (
+        CircularObroundProfile, CircularRectProfile, ConicObroundProfile, ConicRectProfile,
+        EllipseProfile, G2QuinticObroundProfile, G2QuinticRectProfile, SuperellipseProfile,
+    )
+    from traymold.profiles import make_base_profile
+
+    for spec in (
+        G2QuinticObroundProfile(), G2QuinticRectProfile(),
+        ConicObroundProfile(), ConicRectProfile(),
+        CircularObroundProfile(), CircularRectProfile(),
+        EllipseProfile(), SuperellipseProfile(),
+    ):
+        wire = make_base_profile(spec)
+        assert wire is not None, spec.kind
+
+
+def test_every_rect_family_is_fully_defaulted():
+    """A schema-driven form builds a variant from its defaults alone. A required
+    field without one is emitted as nothing and rejected before the user has
+    touched it - which is how the rect profiles were unreachable from the UI."""
+    from traymold.api import json_schema
+
+    defs = json_schema().get("$defs", {})
+    for name in ("G2QuinticRectProfile", "ConicRectProfile", "CircularRectProfile",
+                 "G2QuinticObroundProfile", "EllipseProfile", "SuperellipseProfile"):
+        spec = defs[name]
+        for field, schema in spec.get("properties", {}).items():
+            if field == "kind":
+                continue
+            assert "default" in schema, f"{name}.{field} has no default"
+
+
+def test_a_superellipse_too_square_to_fit_is_refused_by_name():
+    """No exact NURBS form exists, so the fit is measured rather than trusted.
+    Past what a single C2 spline can follow it must say so, not hand a tangled
+    curve on to fail inside a loft with no useful message."""
+    import pytest
+    from traymold.profiles import ProfileError, superellipse_wire
+
+    superellipse_wire(175.0, 105.0, 4.0)  # the default must work
+    with pytest.raises(ProfileError, match="cannot be fitted"):
+        superellipse_wire(175.0, 105.0, 12.0)

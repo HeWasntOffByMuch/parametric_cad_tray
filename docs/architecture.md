@@ -572,3 +572,48 @@ here. What is recorded: the implementation holds the horizontal gap; the fix, if
 normal is chosen, is to scale the offset by `1/cos θ`; and the reference has 0°
 draft everywhere, so nothing about the reference depends on this. Until the
 contract is decided, draft is **not production-ready** and is documented as such.
+
+
+---
+
+## 10. Known limits by profile family
+
+Six of the eight plan families build with the default edge treatments. Two fail,
+each on exactly one treatment and nowhere else; every other step of the same mold
+builds correctly, so the remedy is specific rather than "use something else".
+
+| family | status |
+|---|---|
+| `g2_quintic_obround`, `g2_quintic_rect` | full |
+| `conic_obround`, `conic_rect` | full |
+| `circular_obround`, `circular_rect` | full |
+| `ellipse` | fails in the **male root blend** fuse. Set `mold.male_root_blend` to `none` and the mold builds. |
+| `superellipse` | fails in the **female entry blend** cut. Set `mold.female_entry_blend_top` / `_bottom` to `none` and the mold builds. |
+
+Both are OCC boolean failures against a lofted spline tool that is tangent to the
+wall it acts on, not parameter errors: the profile, the offset and every other
+boolean succeed. Converting the tangency into a 1 um overlap was tried and only
+moves the failure to the next boolean, so the fix is a change to how the blend
+solids are constructed, not a tolerance.
+
+They are reported rather than survived. Every boolean in `mold.py` is now bounded
+by `_checked`: a fuse may not shrink a solid, a cut may not grow one, and neither
+may return nothing. OCC signals these failures by returning a valid but empty or
+undersized shape rather than raising, so before this an elliptical male came out
+at 70 cm3 instead of 1010 and still exported a printable STL. Silent corruption
+in a tool whose output gets printed is worse than a refusal.
+
+### The superellipse fit
+
+A superellipse has no exact NURBS form, so it is sampled and fitted. Sampling
+uniformly in `t` is wrong: for exponent > 2 the parameterisation is singular at
+the quadrant boundaries - `dy/dt` diverges at `t = 0` - so uniform sampling
+crowds points along the flats and starves the corners. The fitter then chased
+that noise into 195-819 poles, and the resulting curve, though accurate to a
+nanometre, was too tangled to loft through at all.
+
+Sampling is now bisected on chord sagitta, which puts points where the curve
+turns: about 50 poles, and 1.4 um from the true curve. The fit is then measured
+against the analytic superellipse and refused if it exceeds 10 um, which happens
+above roughly exponent 4.6 at 175 x 105 mm and 5.8 on a larger plan. The schema
+stops at 6.
