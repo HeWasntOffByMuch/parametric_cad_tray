@@ -1,0 +1,238 @@
+name: Deploy API to the VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/api/**'
+      - 'packages/tray-core/**'
+      - 'deploy/**'
+      - '.github/workflows/api.yml'
+  pull_request:
+    paths:
+      - 'packages/api/**'
+      - 'packages/tray-core/**'
+      - 'deploy/**'
+      - '.github/workflows/api.yml'
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one halfway: an interrupted
+# `docker compose up` leaves the VPS between two images.
+concurrency:
+  group: api-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # --------------------------------------------------------------------------
+  test:
+    name: Geometry core and API suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: deploy/requirements.txt
+      - name: Install the pinned runtime
+        run: |
+          python -m pip install --upgrade pip
+          # The same pins the image is built from, so a suite that passes here
+          # passes for the same reasons in the container.
+          pip install -r deploy/requirements.txt
+          pip install pytest httpx
+      - name: The system libraries the OCP wheel does not vendor
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libx11-6 libexpat1
+      - name: Core suite
+        run: python -m pytest packages/tray-core/tests -q
+        env:
+          PYTHONPATH: ${{ github.workspace }}/packages/tray-core
+      - name: API suite
+        run: python -m pytest packages/api/tests -q
+        env:
+          PYTHONPATH: ${{ github.workspace }}/packages/tray-core:${{ github.workspace }}/packages/api
+
+  # --------------------------------------------------------------------------
+  build:
+    name: Build and push the image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the image name
+        id: meta
+        # GHCR rejects an uppercase path, and this repository owner has capitals.
+        run: |
+          repo=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${repo}/api" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          # A pull request builds to prove the Dockerfile still works, and
+          # pushes nothing.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          # The OCP wheel is ~400 MB and the apt layer is stable; without this
+          # every run re-downloads both.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  # --------------------------------------------------------------------------
+  deploy:
+    name: Roll it out
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://${{ vars.TRAYMOLD_API_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the deployment is configured
+        # Through the environment, never interpolated into the script: a secret
+        # substituted into a shell line is a secret the shell can be made to run.
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER_: ${{ secrets.VPS_USER }}
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          DOMAIN: ${{ vars.TRAYMOLD_API_DOMAIN }}
+          ORIGINS: ${{ vars.TRAYAPI_ALLOWED_ORIGINS }}
+          TLS_EMAIL: ${{ vars.TRAYMOLD_TLS_EMAIL }}
+        run: |
+          missing=()
+          [ -n "$HOST" ]     || missing+=("secret VPS_HOST")
+          [ -n "$USER_" ]    || missing+=("secret VPS_USER")
+          [ -n "$KEY" ]      || missing+=("secret VPS_SSH_KEY")
+          [ -n "$DOMAIN" ]   || missing+=("variable TRAYMOLD_API_DOMAIN")
+          [ -n "$ORIGINS" ]  || missing+=("variable TRAYAPI_ALLOWED_ORIGINS")
+          # Caddy's global `email` option refuses an empty value, so an unset
+          # variable here would fail on the VPS rather than in this job.
+          [ -n "$TLS_EMAIL" ] || missing+=("variable TRAYMOLD_TLS_EMAIL")
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf 'Not configured yet. Missing:\n'; printf '  - %s\n' "${missing[@]}"
+            printf '\nSee docs/deployment.md.\n'
+            exit 1
+          fi
+
+      - name: Authorize against the VPS
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT }}
+          HOST_KEY: ${{ vars.VPS_SSH_HOST_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "$HOST_KEY" ]; then
+            printf '%s\n' "$HOST_KEY" > ~/.ssh/known_hosts
+          else
+            # Trust-on-first-use. Fine for a host you control, but pin it:
+            #   ssh-keyscan -p 22 your.vps > key.txt
+            # and paste the result into the VPS_SSH_HOST_KEY repository variable.
+            echo "::warning::VPS_SSH_HOST_KEY is not set; falling back to ssh-keyscan (no host verification)."
+            ssh-keyscan -p "${PORT:-22}" "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Write the environment file
+        env:
+          DOMAIN: ${{ vars.TRAYMOLD_API_DOMAIN }}
+          TLS_EMAIL: ${{ vars.TRAYMOLD_TLS_EMAIL }}
+          ORIGINS: ${{ vars.TRAYAPI_ALLOWED_ORIGINS }}
+          WORKERS: ${{ vars.TRAYAPI_WORKERS }}
+          MEMORY: ${{ vars.TRAYMOLD_MEMORY_LIMIT }}
+          IMAGE: ${{ needs.build.outputs.image }}
+        run: |
+          # Pinned to this commit, not to :latest, so the VPS runs exactly what
+          # this run built and a rollback is re-running an older workflow.
+          cat > deploy/.env <<EOF
+          TRAYMOLD_IMAGE=${IMAGE}:${{ github.sha }}
+          TRAYMOLD_SITE_ADDRESS=${DOMAIN}
+          TRAYMOLD_TLS_EMAIL=${TLS_EMAIL}
+          TRAYAPI_ALLOWED_ORIGINS=${ORIGINS}
+          TRAYAPI_WORKERS=${WORKERS:-2}
+          TRAYMOLD_MEMORY_LIMIT=${MEMORY:-3g}
+          EOF
+          rm -f deploy/.env.local
+
+      - name: Ship the compose files
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_PORT }}
+          DIR: ${{ vars.VPS_APP_DIR }}
+        run: |
+          DIR="${DIR:-/opt/traymold}"
+          # tar over ssh rather than rsync or scp -r: tar is on every host, and
+          # this ships the deploy directory only, never the repository.
+          tar -cz -C deploy . \
+            | ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" "$USER@$HOST" \
+                "mkdir -p '$DIR' && tar -xz -C '$DIR'"
+
+      - name: Pull and restart
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_PORT }}
+          DIR: ${{ vars.VPS_APP_DIR }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          DIR="${DIR:-/opt/traymold}"
+          SSH="ssh -i $HOME/.ssh/id_deploy -p ${PORT:-22} $USER@$HOST"
+
+          # Piped, so the token never appears in the remote process arguments.
+          # (ssh joins its command arguments into one string, so the username
+          # goes in directly; a GitHub login name has no shell metacharacters.)
+          printf '%s' "$GHCR_TOKEN" \
+            | $SSH "docker login ghcr.io -u ${GHCR_USER} --password-stdin"
+
+          $SSH bash -s <<EOF
+          set -euo pipefail
+          cd '$DIR'
+          docker compose --env-file .env pull
+          docker compose --env-file .env up -d --remove-orphans --wait --wait-timeout 240
+          docker logout ghcr.io
+          # Keep a week of images so a rollback does not have to pull again.
+          docker image prune -af --filter 'until=168h'
+          docker compose --env-file .env ps
+          EOF
+
+      - name: Smoke the live deployment
+        env:
+          DOMAIN: ${{ vars.TRAYMOLD_API_DOMAIN }}
+          ORIGINS: ${{ vars.TRAYAPI_ALLOWED_ORIGINS }}
+        run: |
+          base="https://${DOMAIN}"
+          # A brand new host is waiting on Let's Encrypt here, not on the API.
+          for i in $(seq 1 40); do
+            curl -fsS --max-time 10 "$base/api/health" >/dev/null && break
+            echo "waiting for $base ($i/40)"; sleep 15
+          done
+          ORIGIN="${ORIGINS%%,*}" ./deploy/smoke.sh "$base"

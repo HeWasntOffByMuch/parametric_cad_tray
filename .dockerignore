@@ -1,0 +1,18 @@
+# The build context is the repository root; almost none of it belongs in the image.
+.git
+.github
+.cache
+docs
+reference
+tools
+packages/web
+packages/*/tests
+packages/api/bench
+packages/api/harness
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+out

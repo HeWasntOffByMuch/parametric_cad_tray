@@ -1,0 +1,15 @@
+# Pinned, not floated.
+#
+# `traymold.api.environment()` reports the CadQuery and OCP versions and the
+# artifact cache key includes them, so an upgrade invalidates every cached build
+# and can move the geometry. That makes it a code change with a test run behind
+# it, never something a rebuild does on its own.
+#
+# Verified against: 249 tests, and the reference STEP reproduced to 2.4 um.
+cadquery==2.8.0
+cadquery-ocp==7.9.3.1.1
+numpy==2.4.6
+pydantic==2.13.5
+
+fastapi==0.141.1
+uvicorn==0.52.4

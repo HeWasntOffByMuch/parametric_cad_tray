@@ -1,0 +1,83 @@
+# The production stack: the API behind Caddy, which terminates TLS.
+#
+#   docker compose --env-file .env up -d
+#
+# Everything tunable is an environment variable with a default; see .env.example.
+# For a local rehearsal add the local override, which builds the image from this
+# checkout and drops TLS:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml \
+#                  --env-file .env.local up --build
+name: traymold
+
+services:
+  api:
+    image: ${TRAYMOLD_IMAGE:-ghcr.io/hewasntoffbymuch/parametric_cad_tray/api:latest}
+    restart: unless-stopped
+    # Not published. Caddy is the only thing that reaches it, over the compose
+    # network, so the API is never exposed without TLS and without a rate limit
+    # in front of it.
+    expose:
+      - "8000"
+    environment:
+      # The browser app is on a different origin (GitHub Pages), so CORS is
+      # load-bearing rather than decorative. No wildcard: name the origins.
+      TRAYAPI_ALLOWED_ORIGINS: ${TRAYAPI_ALLOWED_ORIGINS:?name the exact frontend origins, e.g. https://user.github.io}
+      TRAYAPI_WORKERS: ${TRAYAPI_WORKERS:-2}
+      TRAYAPI_MAX_TASKS_PER_WORKER: ${TRAYAPI_MAX_TASKS_PER_WORKER:-24}
+      TRAYAPI_BUILD_TIMEOUT_S: ${TRAYAPI_BUILD_TIMEOUT_S:-120}
+      TRAYAPI_RATE_LIMIT_REQUESTS: ${TRAYAPI_RATE_LIMIT_REQUESTS:-20}
+      TRAYAPI_RATE_LIMIT_WINDOW_S: ${TRAYAPI_RATE_LIMIT_WINDOW_S:-60}
+      TRAYAPI_MAX_CONCURRENT_JOBS_PER_CLIENT: ${TRAYAPI_MAX_CONCURRENT_JOBS_PER_CLIENT:-3}
+      TRAYAPI_MAX_REQUEST_BYTES: ${TRAYAPI_MAX_REQUEST_BYTES:-262144}
+      TRAYAPI_CACHE_MAX_BYTES: ${TRAYAPI_CACHE_MAX_BYTES:-2147483648}
+      TRAYAPI_CACHE_MAX_AGE_S: ${TRAYAPI_CACHE_MAX_AGE_S:-604800}
+    volumes:
+      # Content-addressed, so it survives a redeploy and every cache hit after
+      # one is a 4 ms file read instead of a 2.5 s build.
+      - artifacts:/var/lib/traymold/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          # OCC allocates freely during a boolean. Two workers plus the parent
+          # peak well under this; the cap is here so a pathological parameter
+          # set takes out the container and not the VPS.
+          memory: ${TRAYMOLD_MEMORY_LIMIT:-3g}
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "${TRAYMOLD_HTTP_PORT:-80}:80"
+      - "${TRAYMOLD_HTTPS_PORT:-443}:443"
+      - "${TRAYMOLD_HTTPS_PORT:-443}:443/udp"
+    environment:
+      # A hostname (api.example.com) gets automatic HTTPS; a bare port (:80)
+      # serves plain HTTP, which is what the local rehearsal uses.
+      TRAYMOLD_SITE_ADDRESS: ${TRAYMOLD_SITE_ADDRESS:?a hostname for TLS, or :80 for a local run}
+      TRAYMOLD_TLS_EMAIL: ${TRAYMOLD_TLS_EMAIL:?an address for certificate expiry notices; unused when SITE_ADDRESS is a bare port}
+      TRAYMOLD_MAX_BODY: ${TRAYAPI_MAX_REQUEST_BYTES:-262144}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # issued certificates: losing this re-issues, and
+      - caddy_config:/config  # Let's Encrypt rate-limits that
+    depends_on:
+      api:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  artifacts:
+  caddy_data:
+  caddy_config:

@@ -6,3 +6,6 @@ node_modules/
 dist/
 .cache/
 *.tsbuildinfo
+
+# The real deployment environment file, written on the VPS or by CI.
+deploy/.env

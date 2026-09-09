@@ -31,10 +31,24 @@ jobs:
         working-directory: packages/web
       # The build uses relative asset URLs, so the same output works at the
       # domain root and under a repository path. Point it at the deployed API.
+      # One place configures the API host: TRAYMOLD_API_DOMAIN, shared with the
+      # deploy workflow. TRAYMOLD_API_BASE_URL overrides it when the API is not
+      # simply https on that name.
+      - name: Resolve the API base URL
+        id: api
+        env:
+          BASE: ${{ vars.TRAYMOLD_API_BASE_URL }}
+          DOMAIN: ${{ vars.TRAYMOLD_API_DOMAIN }}
+        run: |
+          url="${BASE:-${DOMAIN:+https://$DOMAIN}}"
+          if [ -z "$url" ]; then
+            echo "::warning::Neither TRAYMOLD_API_BASE_URL nor TRAYMOLD_API_DOMAIN is set; the page will ship with no API and ask for one at runtime."
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
       - run: npm run build
         working-directory: packages/web
         env:
-          VITE_API_BASE_URL: ${{ vars.TRAYMOLD_API_BASE_URL }}
+          VITE_API_BASE_URL: ${{ steps.api.outputs.url }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: packages/web/dist

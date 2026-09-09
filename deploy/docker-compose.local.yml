@@ -1,0 +1,21 @@
+# Local rehearsal overlay: build the image from this checkout instead of pulling
+# it, publish the API directly so you can bypass the proxy when something looks
+# wrong, and skip TLS.
+#
+#   make deploy-local        (from the repository root)
+services:
+  api:
+    image: traymold-api:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "${TRAYMOLD_API_PORT:-8000}:8000"
+
+  caddy:
+    # An unresolvable hostname would send Caddy off to Let's Encrypt for a
+    # certificate it cannot get, so the local .env sets :80 and these ports move
+    # off 80/443 to avoid needing root or fighting anything already listening.
+    depends_on:
+      api:
+        condition: service_healthy

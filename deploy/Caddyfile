@@ -1,0 +1,54 @@
+# One file for both the VPS and the local rehearsal. The difference is entirely
+# in TRAYMOLD_SITE_ADDRESS: a hostname gets automatic HTTPS, ":80" does not.
+{
+	# Where Let's Encrypt sends expiry notices. Caddy's global `email` takes no
+	# empty value, so compose requires it even for the local run, where the site
+	# address is a bare port and ACME never runs at all.
+	email {$TRAYMOLD_TLS_EMAIL}
+	# Nothing needs the admin API, and it would otherwise listen on 2019.
+	admin off
+}
+
+{$TRAYMOLD_SITE_ADDRESS} {
+	log {
+		output stdout
+		format console
+	}
+
+	# A preview job reports its state over server-sent events. Compressing that
+	# stream would buffer it, and buffering it defeats the endpoint: the browser
+	# would learn a 2.5 s build had finished only once it had. Everything else
+	# is worth compressing - STEP is text and goes down by roughly 5x.
+	@sse path_regexp sse ^/api/jobs/[^/]+/events$
+	@compressible not path_regexp sse ^/api/jobs/[^/]+/events$
+
+	encode @compressible zstd gzip
+
+	handle @sse {
+		reverse_proxy api:8000 {
+			flush_interval -1
+		}
+	}
+
+	handle /api/* {
+		# A parameter document is a few kB. The API rejects oversized bodies
+		# too; this stops them one hop earlier, before they reach Python.
+		request_body {
+			max_size {$TRAYMOLD_MAX_BODY:262144}
+		}
+		reverse_proxy api:8000
+	}
+
+	# Not a 404: someone who lands on the bare API host should be told where the
+	# application actually is. The UI is served from GitHub Pages, not here.
+	handle {
+		respond "traymold API. The application lives at the configured frontend origin; try /api/health." 200
+	}
+
+	header {
+		# The API is JSON and binary CAD files, never HTML, so there is nothing
+		# to frame or sniff.
+		X-Content-Type-Options nosniff
+		-Server
+	}
+}

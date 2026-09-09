@@ -164,8 +164,16 @@ Verified by serving `dist/` under a repository path: index, JS, CSS and a
 fragment-carrying deep link all return 200 with relative URLs.
 
 `.github/workflows/pages.yml` builds and deploys on a push to `main`, taking the
-API URL from the `TRAYMOLD_API_BASE_URL` repository variable. Set
-`TRAYAPI_ALLOWED_ORIGINS` on the backend to the Pages origin.
+API URL from the `TRAYMOLD_API_BASE_URL` repository variable, or from
+`https://$TRAYMOLD_API_DOMAIN` when only the domain is configured — the same
+variable the API deploy uses, so the host is named once. Set
+`TRAYAPI_ALLOWED_ORIGINS` on the backend to the Pages origin: the exact scheme
+and host, with no path, so `https://user.github.io` and not
+`https://user.github.io/parametric_cad_tray`.
+
+The API half — the image, the compose stack behind Caddy, the VPS prerequisites
+and how to rehearse the whole thing locally — is
+[`docs/deployment.md`](deployment.md).
 
 ---
 
