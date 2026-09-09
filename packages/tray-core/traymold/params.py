@@ -1,0 +1,281 @@
+"""The parameter schema.  Pydantic v2 is the single definition; everything else
+(JSON Schema, generated TypeScript, the CLI) is derived from it.
+
+Three concepts are kept strictly separate and must never be mixed:
+
+  1. tray / profile geometry   -> `TrayParams.profile`, `TrayParams.depth`
+  2. forming gap               -> `LeatherParams`, `FitParams`  (see derive.py)
+  3. 3D edge treatments        -> `MoldParams.mold.*_blend`
+
+The female cavity is derived from the male *base* profile and the forming gap
+alone.  No edge treatment may influence it.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated, Literal, Union
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .version import SCHEMA_VERSION
+
+
+class _Model(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+# --------------------------------------------------------------------------
+# 1. base plan profiles - named for the curve construction they actually use
+# --------------------------------------------------------------------------
+class _RectProfileBase(_Model):
+    length: float = Field(gt=0, le=1000, description="plan length, X, mm")
+    width: float = Field(gt=0, le=1000, description="plan width, Y, mm")
+
+
+class G2QuinticRectProfile(_RectProfileBase):
+    """Rectangle with the reference's G2 corner: non-rational quintic B-spline,
+    zero curvature at both tangent points.  Recovered verbatim from the Onshape
+    STEP; not a conic and not approximable by one within 0.23 mm at s = 52.5."""
+
+    kind: Literal["g2_quintic_rect"] = "g2_quintic_rect"
+    corner_setback: float = Field(ge=0, description="setback from the sharp corner, mm")
+
+    @property
+    def corner_style(self) -> str:
+        return "g2_quintic"
+
+
+class G2QuinticObroundProfile(_RectProfileBase):
+    """The reference profile: G2 quintic corners at the maximum setback, so the
+    short ends have no straight run at all."""
+
+    kind: Literal["g2_quintic_obround"] = "g2_quintic_obround"
+
+    @property
+    def corner_setback(self) -> float:
+        return self.width / 2.0
+
+    @property
+    def corner_style(self) -> str:
+        return "g2_quintic"
+
+
+class ConicRectProfile(_RectProfileBase):
+    """Rectangle with rational-quadratic (conic) corners.  rho = 0.5 is the parabola."""
+
+    kind: Literal["conic_rect"] = "conic_rect"
+    corner_setback: float = Field(ge=0)
+    rho: float = Field(default=0.5, gt=0.0, lt=1.0)
+
+    @property
+    def corner_style(self) -> str:
+        return "conic"
+
+
+class ConicObroundProfile(_RectProfileBase):
+    kind: Literal["conic_obround"] = "conic_obround"
+    rho: float = Field(default=0.5, gt=0.0, lt=1.0)
+
+    @property
+    def corner_setback(self) -> float:
+        return self.width / 2.0
+
+    @property
+    def corner_style(self) -> str:
+        return "conic"
+
+
+class CircularRectProfile(_RectProfileBase):
+    """Conventional rounded rectangle: constant-radius circular corners."""
+
+    kind: Literal["circular_rect"] = "circular_rect"
+    corner_radius: float = Field(ge=0)
+
+    @property
+    def corner_setback(self) -> float:
+        return self.corner_radius
+
+    @property
+    def corner_style(self) -> str:
+        return "circular"
+
+
+class CircularObroundProfile(_RectProfileBase):
+    """Conventional stadium / obround: circular ends of radius width / 2."""
+
+    kind: Literal["circular_obround"] = "circular_obround"
+
+    @property
+    def corner_setback(self) -> float:
+        return self.width / 2.0
+
+    @property
+    def corner_style(self) -> str:
+        return "circular"
+
+
+class EllipseProfile(_RectProfileBase):
+    kind: Literal["ellipse"] = "ellipse"
+
+    @property
+    def corner_setback(self) -> float:
+        return min(self.length, self.width) / 2.0
+
+    @property
+    def corner_style(self) -> str:
+        return "circular"
+
+
+class SuperellipseProfile(_RectProfileBase):
+    kind: Literal["superellipse"] = "superellipse"
+    exponent: float = Field(default=4.0, gt=1.0, le=20.0)
+
+    @property
+    def corner_setback(self) -> float:
+        return min(self.length, self.width) / 2.0
+
+    @property
+    def corner_style(self) -> str:
+        return "circular"
+
+
+ProfileSpec = Annotated[
+    Union[
+        G2QuinticObroundProfile,
+        G2QuinticRectProfile,
+        ConicObroundProfile,
+        ConicRectProfile,
+        CircularObroundProfile,
+        CircularRectProfile,
+        EllipseProfile,
+        SuperellipseProfile,
+    ],
+    Field(discriminator="kind"),
+]
+
+
+# --------------------------------------------------------------------------
+# 1b. tray forming geometry
+# --------------------------------------------------------------------------
+class TrayParams(_Model):
+    profile: ProfileSpec = Field(default_factory=lambda: G2QuinticObroundProfile(length=175.0, width=105.0))
+    depth: float = Field(default=25.0, gt=0, le=300, description="draw depth, mm")
+    datum: Literal["inner", "outer"] = "inner"
+    draft_angle: float = Field(default=0.0, ge=0.0, le=15.0, description="degrees")
+    draft_mode: Literal["both", "plug_only", "cavity_only"] = "both"
+
+
+# --------------------------------------------------------------------------
+# 2. forming gap inputs
+# --------------------------------------------------------------------------
+class LeatherParams(_Model):
+    thickness: float = Field(default=3.0, gt=0, le=12.0)
+    compression: float = Field(default=0.0, ge=0.0, le=0.4, description="fraction")
+
+
+class FitParams(_Model):
+    clearance: float = Field(default=0.0, ge=-0.5, le=2.0)
+    gap_override: float | None = Field(default=None, gt=0.0, le=12.0)
+
+
+# --------------------------------------------------------------------------
+# 3. 3D edge treatments - applied AFTER the base profiles exist
+# --------------------------------------------------------------------------
+BlendStyle = Literal["g2_quintic", "circular", "chamfer", "none"]
+
+
+class EdgeTreatment(_Model):
+    style: BlendStyle = "g2_quintic"
+    size: float = Field(default=0.0, ge=0.0, le=100.0, description="setback, mm")
+
+    @property
+    def active(self) -> bool:
+        return self.style != "none" and self.size > 0.0
+
+
+class MoldParams(_Model):
+    flange_width: float = Field(default=30.0, gt=0, le=200)
+    base_plate_thickness: float = Field(default=15.0, gt=0, le=100)
+    cavity_plate_thickness: float = Field(default=25.0, gt=0, le=300)
+
+    # each treatment is independent and owns its own parameters
+    male_root_blend: EdgeTreatment = EdgeTreatment(style="circular", size=1.2)
+    male_floor_blend: EdgeTreatment = EdgeTreatment(style="g2_quintic", size=5.0)
+    female_entry_blend_top: EdgeTreatment = EdgeTreatment(style="g2_quintic", size=3.0)
+    female_entry_blend_bottom: EdgeTreatment = EdgeTreatment(style="none", size=0.0)
+
+    plate_edge_chamfer: float = Field(default=0.0, ge=0.0, le=10.0)
+    flange_relief_depth: float = Field(default=0.0, ge=0.0, le=20.0)
+
+
+# --------------------------------------------------------------------------
+# 4. manufacturing features
+# --------------------------------------------------------------------------
+class ClampHoles(_Model):
+    enabled: bool = False
+    pattern: Literal["diagonal_pair", "four_corners"] = "diagonal_pair"
+    diagonal: Literal["nw_se", "ne_sw"] = "nw_se"
+    diameter: float = Field(default=6.0, gt=0, le=30)
+    inset: float = Field(default=15.0, gt=0, le=200)
+    top_chamfer: float = Field(default=2.0, ge=0.0, le=10.0)
+    in_male: bool = False
+    in_female: bool = True
+
+
+class PryNotches(_Model):
+    enabled: bool = False
+    pattern: Literal["diagonal_pair", "four_corners"] = "diagonal_pair"
+    diagonal: Literal["nw_se", "ne_sw"] = "ne_sw"
+    size_x: float = Field(default=15.0, gt=0, le=100)
+    size_y: float = Field(default=15.0, gt=0, le=100)
+    depth: float = Field(default=8.0, gt=0, le=200)
+
+
+class AlignmentPins(_Model):
+    enabled: bool = False
+    pattern: Literal["diagonal_pair", "four_corners"] = "four_corners"
+    diameter: float = Field(default=6.0, gt=0, le=30)
+    height: float = Field(default=8.0, gt=0, le=100)
+    inset: float = Field(default=15.0, gt=0, le=200)
+
+
+class Features(_Model):
+    clamp_holes: ClampHoles = ClampHoles()
+    pry_notches: PryNotches = PryNotches()
+    alignment_pins: AlignmentPins = AlignmentPins()
+
+
+class ManufacturingParams(_Model):
+    pin_fit_clearance: float = Field(default=0.20, ge=0.0, le=1.0)
+    min_wall: float = Field(default=2.0, gt=0, le=20)
+    nozzle_diameter: float = Field(default=0.4, gt=0, le=2.0)
+
+
+class ExportParams(_Model):
+    linear_deflection: float = Field(default=0.05, gt=0, le=5.0)
+    angular_deflection: float = Field(default=0.20, gt=0, le=1.5)
+    blend_sections: int = Field(default=48, ge=8, le=256,
+                                description="loft sections per 3D edge treatment")
+
+
+class Params(_Model):
+    schema_version: str = SCHEMA_VERSION
+    name: str = "untitled"
+    tray: TrayParams = TrayParams()
+    leather: LeatherParams = LeatherParams()
+    fit: FitParams = FitParams()
+    mold: MoldParams = MoldParams()
+    features: Features = Features()
+    manufacturing: ManufacturingParams = ManufacturingParams()
+    export: ExportParams = ExportParams()
+
+    @model_validator(mode="after")
+    def _check_setback(self):
+        p = self.tray.profile
+        s = p.corner_setback
+        if s > min(p.length, p.width) / 2.0 + 1e-9:
+            raise ValueError(
+                f"E-SHAPE-001: corner setback {s} exceeds half the smaller side "
+                f"({min(p.length, p.width) / 2.0})"
+            )
+        return self

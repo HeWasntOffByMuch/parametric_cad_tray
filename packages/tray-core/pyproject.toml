@@ -1,0 +1,13 @@
+[project]
+name = "traymold"
+version = "0.1.0"
+description = "Deterministic parametric leather wet-mold geometry (CadQuery)"
+requires-python = ">=3.11"
+dependencies = ["cadquery>=2.4", "pydantic>=2.7", "numpy>=1.26"]
+
+[project.scripts]
+traymold = "traymold.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: builds solids or reads the reference STEP files"]
