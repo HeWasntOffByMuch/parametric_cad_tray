@@ -307,17 +307,33 @@ jobs:
           # take minutes. In external mode a working proxy answers at once, so a
           # long wait here only delays a diagnosis that is already certain.
           if [ "${PROXY:-caddy}" = "external" ]; then tries=8; else tries=40; fi
+
+          # The status code, not just success or failure: a proxy that cannot be
+          # reached at all and one that is forwarding to nothing are different
+          # problems with different fixes, and they are told apart here.
+          code=000
           for i in $(seq 1 $tries); do
-            curl -fsS --max-time 10 "$base/api/health" >/dev/null && break
-            echo "waiting for $base ($i/$tries)"; sleep 15
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/health" || echo 000)
+            [ "$code" = "200" ] && break
+            echo "waiting for $base - HTTP $code ($i/$tries)"; sleep 15
           done
 
-          if ! curl -fsS --max-time 10 "$base/api/health" >/dev/null; then
-            if [ "${PROXY:-caddy}" = "external" ]; then
-              echo "::error::The API is healthy on the VPS at ${API_BIND:-127.0.0.1:8000}, but $base does not answer. The proxy that owns 443 on that host is not forwarding to it yet - add a vhost per 'Behind a proxy you already run' in docs/deployment.md."
-            else
-              echo "::error::$base does not answer. Caddy has not obtained a certificate: check that $DOMAIN resolves to this VPS and that port 80 is reachable, then read 'docker compose logs caddy' on the host."
-            fi
+          if [ "$code" != "200" ]; then
+            case "$code" in
+              502|503|504)
+                echo "::error::$base answered HTTP $code. The proxy is reaching this host and terminating TLS, but cannot reach the API behind it. With a containerised proxy that means the API is not on its docker network: TRAYMOLD_PROXY_NETWORK is currently '${PROXY_NETWORK:-unset}' - set it to the network the proxy container is on ('docker network ls' on the VPS) so the API joins it as traymold-api:8000. If it is already set, check the upstream address in the proxy's own config."
+                ;;
+              000)
+                if [ "${PROXY:-caddy}" = "external" ]; then
+                  echo "::error::$base did not answer at all, and the API is healthy on the VPS at ${API_BIND:-127.0.0.1:8000}. The proxy that owns 443 there has no vhost for $DOMAIN yet, or its certificate is not issued - see 'Behind a proxy you already run' in docs/deployment.md."
+                else
+                  echo "::error::$base did not answer at all. Caddy has not obtained a certificate: check that $DOMAIN resolves to this VPS and that port 80 is reachable, then read 'docker compose logs caddy' on the host."
+                fi
+                ;;
+              *)
+                echo "::error::$base answered HTTP $code rather than 200. Something is serving that hostname, but it is not this API - check which vhost is matching $DOMAIN."
+                ;;
+            esac
             exit 1
           fi
 
