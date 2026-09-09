@@ -26,6 +26,15 @@ async function tick(ms = 10) {
 
 const status = () => screen.getByTestId('preview-status').dataset.state
 
+/** Wait out the preview the page now builds by itself on load, then forget it.
+ *  The tests below count the builds an *edit* causes, and the one that was
+ *  already on screen when the edit started is not one of them. */
+async function settleStartupPreview() {
+  await waitFor(() => expect(backend.previewCalls.length).toBeGreaterThan(0), { timeout: 2000 })
+  await waitFor(() => expect(status()).toBe('clean'))
+  backend.previewCalls.length = 0
+}
+
 beforeEach(() => {
   window.localStorage.clear()
   window.history.replaceState(null, '', '/')
@@ -39,7 +48,28 @@ afterEach(() => {
 })
 
 describe('preview lifecycle', () => {
-  it('starts with no preview and does not build until asked', async () => {
+  // Arriving at the page is not a request to build anything, but it is a
+  // request to see what you arrived at - a preset, a shared link, or the design
+  // you left behind. Nothing is clicked here.
+  it('builds the design it restored on load, with nothing clicked', async () => {
+    await boot({ options: { autoPreview: true } })
+    await waitFor(() => expect(status()).toBe('clean'), { timeout: 2000 })
+    expect(screen.getByTestId('viewer-canvas')).toHaveAttribute('data-url', '/api/artifacts/key/preview.glb')
+    expect(backend.previewCalls).toHaveLength(1)
+    expect(backend.previewCalls.at(-1)!.tray.profile.length).toBe(175)
+  })
+
+  // The trigger is an effect over the parameters, and the callback it schedules
+  // through is rebuilt whenever a preview lands - so without the latch it would
+  // fire again on its own result, forever.
+  it('builds once on load, not once per render', async () => {
+    await boot({ options: { autoPreview: true } })
+    await waitFor(() => expect(status()).toBe('clean'), { timeout: 2000 })
+    await tick(400)
+    expect(backend.previewCalls).toHaveLength(1)
+  })
+
+  it('builds nothing on load when automatic previews are off', async () => {
     await boot()
     expect(status()).toBe('empty')
     expect(screen.getByTestId('viewer-placeholder')).toHaveTextContent(/no preview yet/i)
@@ -127,8 +157,7 @@ describe('preview lifecycle', () => {
   it('coalesces typing into one build rather than one per keystroke', async () => {
     const user = userEvent.setup()
     await boot({ options: { autoPreview: true, previewIdleMs: 120 } })
-    await tick()
-    backend.previewCalls.length = 0
+    await settleStartupPreview()
 
     await user.clear(screen.getByLabelText('Length'))
     await user.type(screen.getByLabelText('Length'), '250')
@@ -142,7 +171,7 @@ describe('preview lifecycle', () => {
   it('does not rebuild geometry that is already on screen', async () => {
     const user = userEvent.setup()
     await boot({ options: { autoPreview: true, previewIdleMs: 120 } })
-    await tick()
+    await settleStartupPreview()
     await user.clear(screen.getByLabelText('Length'))
     await user.type(screen.getByLabelText('Length'), '250')
     await waitFor(() => expect(backend.previewCalls).toHaveLength(1), { timeout: 2000 })
@@ -161,7 +190,7 @@ describe('preview lifecycle', () => {
   it('sends one build when a click both blurs a field and asks for a preview', async () => {
     const user = userEvent.setup()
     await boot({ options: { autoPreview: true, previewIdleMs: 120 } })
-    await tick()
+    await settleStartupPreview()
     await user.clear(screen.getByLabelText('Length'))
     await user.type(screen.getByLabelText('Length'), '250')
     await waitFor(() => expect(backend.previewCalls).toHaveLength(1), { timeout: 2000 })
@@ -185,7 +214,7 @@ describe('preview lifecycle', () => {
   it('still builds when the parameters really have changed', async () => {
     const user = userEvent.setup()
     await boot({ options: { autoPreview: true, previewIdleMs: 120 } })
-    await tick()
+    await settleStartupPreview()
     await user.clear(screen.getByLabelText('Length'))
     await user.type(screen.getByLabelText('Length'), '250')
     await waitFor(() => expect(backend.previewCalls).toHaveLength(1), { timeout: 2000 })
@@ -197,7 +226,7 @@ describe('preview lifecycle', () => {
 
   it('does not start a build while a slider is dragged, only on release', async () => {
     await boot({ options: { autoPreview: true } })
-    await tick()
+    await settleStartupPreview()
     const slider = screen.getByLabelText('Length slider')
     for (const value of [180, 185, 190]) {
       await act(async () => {
@@ -218,9 +247,9 @@ describe('stale job handling', () => {
     backend.previewResponse = (params, id) =>
       backend.job({ id, state: 'running', status: 'building geometry', params_hash: backend.hashOf(params) })
     await boot({ options: { autoPreview: true, previewIdleMs: 80 } })
-    await tick()
 
-    await user.click(screen.getByRole('button', { name: /update preview/i }))
+    // Job A is the build the page starts on load. It never finishes on its own
+    // here: previewResponse holds every job in 'running' until settle() is called.
     await waitFor(() => expect(status()).toBe('generating'))
     const staleId = backend.jobs.keys().next().value as string
 

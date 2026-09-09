@@ -100,10 +100,21 @@ over the canvas.
 
 | interaction | validation | geometry |
 |---|---|---|
+| opening the page | immediately, debounced 250 ms | immediately |
 | typing in a number field | immediately, debounced 250 ms | after a 700 ms idle pause |
 | dragging a slider | on every value change | never during the drag; on release |
 | Update preview | — | immediately |
 | choosing a preset | immediately | after the idle pause |
+
+**The design on screen when the page opens has already been built.** Arriving is
+not a request to build anything, but it is a request to see what you arrived at -
+a preset, a shared link, or the design you left behind - and an empty viewport
+asking you to press Update preview makes you confirm a choice you never made. The
+first build goes through the same idle timer as every other one, so someone who
+starts editing in the first moment supersedes it rather than racing it, and it is
+latched so it happens once rather than once per render. `autoPreview: false`
+turns it off along with idle regeneration: that option means the page builds
+nothing it was not asked for.
 
 **Staleness is decided by the parameters, not by arrival order and not by the
 server hash.** A result may only be displayed if the parameters it was built from
@@ -135,7 +146,8 @@ Measured on the running application, counting every `/api/` call:
 
 | | builds |
 |---|---|
-| idle, nothing touched, 10 s | 0 |
+| opening the page | 1 |
+| idle after that, nothing touched, 10 s | 0 |
 | change one dimension | 1 |
 | click Update preview, nothing changed | 0 (was 2) |
 | edit, then click immediately | 1 (was 2) |
