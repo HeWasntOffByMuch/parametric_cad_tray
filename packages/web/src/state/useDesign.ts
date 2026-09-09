@@ -94,6 +94,16 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
   const fingerprintRef = useRef(fingerprint)
   fingerprintRef.current = fingerprint
 
+  // What is on screen, and what is being built, as refs: `generatePreview` is
+  // reached from a timer and from a click, and both must see the latest values
+  // rather than whatever was closed over when the callback was made.
+  const previewedRef = useRef<string | null>(null)
+  previewedRef.current = previewedFingerprint
+  const previewUrlRef = useRef<string | null>(null)
+  previewUrlRef.current = previewUrl
+  /** Fingerprint of the build currently in flight, if any. */
+  const inFlight = useRef<string | null>(null)
+
   const stopFollowing = useRef<null | (() => void)>(null)
   const runningJobId = useRef<string | null>(null)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -147,6 +157,24 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     const snapshot = paramsRef.current
     if (!snapshot || Object.keys(snapshot).length === 0) return
     const requested = stableStringify(snapshot)
+
+    // Two ways to ask for the same geometry twice, both of which used to send it.
+    //
+    // Clicking Update preview when nothing has changed: the answer is already on
+    // screen, and rebuilding it produces a byte-identical GLB. The server would
+    // serve it from cache in milliseconds, so it looks harmless, but it is still
+    // a round trip, a rate-limit slot and a re-fetch of the model for nothing.
+    if (requested === previewedRef.current && previewUrlRef.current) {
+      setPreviewState('clean')
+      return
+    }
+    // Clicking Update preview while the field still has focus: the click blurs
+    // the input, which commits, which schedules an immediate build - and then the
+    // button's own handler starts a second one. The first was cancelled mid-flight
+    // and rebuilt from scratch. Measured: one click, two POST /api/preview.
+    if (requested === inFlight.current) return
+
+    inFlight.current = requested
     stopFollowing.current?.()
     // A superseded build is wasted CPU; cancel it rather than let it finish.
     if (runningJobId.current) void api.cancel(runningJobId.current).catch(() => {})
@@ -157,6 +185,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
       job = await api.preview(snapshot, allowExperimental)
     } catch (error) {
       runningJobId.current = null
+      inFlight.current = null
       setPreviewState(previewUrl ? 'dirty' : 'failed')
       setTransportError((error as ApiError).message)
       return
@@ -166,6 +195,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
 
     const settle = (finished: Job) => {
       runningJobId.current = null
+      if (inFlight.current === requested) inFlight.current = null
       setPreviewJob(finished)
       // The stale guard: this result is only allowed on screen if the parameters
       // it was built from are still the ones the user has.
@@ -201,6 +231,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     const id = runningJobId.current
     stopFollowing.current?.()
     runningJobId.current = null
+    inFlight.current = null
     if (id) void api.cancel(id).catch(() => {})
     setPreviewState(previewUrl ? 'dirty' : 'empty')
   }, [previewUrl])

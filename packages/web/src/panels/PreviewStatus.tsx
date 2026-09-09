@@ -49,7 +49,17 @@ export function PreviewStatus({
           Cancel
         </button>
       ) : (
-        <button type="button" className="primary" onClick={onGenerate} disabled={!canGenerate}>
+        <button
+          type="button"
+          className="primary"
+          onClick={onGenerate}
+          disabled={!canGenerate}
+          title={
+            state === 'clean'
+              ? 'The preview already matches these parameters'
+              : 'Build the preview from the current parameters'
+          }
+        >
           Update preview
         </button>
       )}

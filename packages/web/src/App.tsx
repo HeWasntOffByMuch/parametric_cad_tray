@@ -159,7 +159,10 @@ export function App({ options }: { options?: DesignOptions } = {}) {
           transportError={design.transportError}
           onGenerate={actions.generatePreview}
           onCancel={actions.cancelPreview}
-          canGenerate={!blocked}
+          // Nothing to build when the preview already matches the parameters:
+          // the click would be a no-op, so say so rather than letting it look
+          // like a button that does nothing.
+          canGenerate={!blocked && design.previewState !== 'clean'}
         />
         <div className={`viewport ${stale ? 'stale' : ''}`} data-testid="viewport">
           {design.previewUrl ? (

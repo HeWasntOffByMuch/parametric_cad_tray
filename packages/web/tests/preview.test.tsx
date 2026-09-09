@@ -139,6 +139,62 @@ describe('preview lifecycle', () => {
     expect(backend.previewCalls.at(-1)!.tray.profile.length).toBe(250)
   })
 
+  it('does not rebuild geometry that is already on screen', async () => {
+    const user = userEvent.setup()
+    await boot({ options: { autoPreview: true, previewIdleMs: 120 } })
+    await tick()
+    await user.clear(screen.getByLabelText('Length'))
+    await user.type(screen.getByLabelText('Length'), '250')
+    await waitFor(() => expect(backend.previewCalls).toHaveLength(1), { timeout: 2000 })
+    await waitFor(() => expect(screen.getByTestId('preview-status')).toHaveAttribute('data-state', 'clean'))
+
+    // Asking again for exactly what is displayed. The server would answer from
+    // cache in milliseconds, which is why this was easy to miss - but it is
+    // still a round trip and a rate-limit slot spent on a byte-identical GLB.
+    await act(async () => {
+      screen.getByRole('button', { name: 'Update preview' }).click()
+    })
+    await tick(300)
+    expect(backend.previewCalls).toHaveLength(1)
+  })
+
+  it('sends one build when a click both blurs a field and asks for a preview', async () => {
+    const user = userEvent.setup()
+    await boot({ options: { autoPreview: true, previewIdleMs: 120 } })
+    await tick()
+    await user.clear(screen.getByLabelText('Length'))
+    await user.type(screen.getByLabelText('Length'), '250')
+    await waitFor(() => expect(backend.previewCalls).toHaveLength(1), { timeout: 2000 })
+    await waitFor(() => expect(screen.getByTestId('preview-status')).toHaveAttribute('data-state', 'clean'))
+    backend.previewCalls.length = 0
+
+    // Editing and then clicking straight away used to send two: the click blurs
+    // the input, which commits and schedules an immediate build, and then the
+    // button's own handler starts a second one that cancels and replaces it.
+    await user.clear(screen.getByLabelText('Length'))
+    await user.type(screen.getByLabelText('Length'), '260')
+    await act(async () => {
+      screen.getByRole('button', { name: 'Update preview' }).click()
+    })
+    await waitFor(() => expect(backend.previewCalls.length).toBeGreaterThan(0), { timeout: 2000 })
+    await tick(400)
+    expect(backend.previewCalls).toHaveLength(1)
+    expect(backend.previewCalls.at(-1)!.tray.profile.length).toBe(260)
+  })
+
+  it('still builds when the parameters really have changed', async () => {
+    const user = userEvent.setup()
+    await boot({ options: { autoPreview: true, previewIdleMs: 120 } })
+    await tick()
+    await user.clear(screen.getByLabelText('Length'))
+    await user.type(screen.getByLabelText('Length'), '250')
+    await waitFor(() => expect(backend.previewCalls).toHaveLength(1), { timeout: 2000 })
+    await user.clear(screen.getByLabelText('Length'))
+    await user.type(screen.getByLabelText('Length'), '251')
+    await waitFor(() => expect(backend.previewCalls).toHaveLength(2), { timeout: 2000 })
+    expect(backend.previewCalls.at(-1)!.tray.profile.length).toBe(251)
+  })
+
   it('does not start a build while a slider is dragged, only on release', async () => {
     await boot({ options: { autoPreview: true } })
     await tick()

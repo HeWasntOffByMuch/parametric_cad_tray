@@ -95,6 +95,32 @@ stops burning a worker.
 
 Errors block Preview and Export; warnings do not.
 
+### Not building the same thing twice
+
+`generatePreview` is idempotent for the parameters already on screen. Two paths
+used to send a request that could not change anything:
+
+- **Clicking Update preview when nothing has changed.** The GLB would come back
+  byte-identical, from cache, in milliseconds - which is why it was easy to miss.
+  It is still a round trip, a rate-limit slot and a re-fetch of the model. The
+  button is now disabled while the state is `clean`, and the call is a no-op if
+  it arrives anyway.
+- **Clicking Update preview while a field still has focus.** The click blurs the
+  input, which commits, which schedules an immediate build; then the button's own
+  handler starts a second one, cancelling and replacing the first. Measured
+  through the real page: one click, two `POST /api/preview`. A build already in
+  flight for the same fingerprint now absorbs the second request.
+
+Measured on the running application, counting every `/api/` call:
+
+| | builds |
+|---|---|
+| idle, nothing touched, 10 s | 0 |
+| change one dimension | 1 |
+| click Update preview, nothing changed | 0 (was 2) |
+| edit, then click immediately | 1 (was 2) |
+| return to a previously built design | 1, served from cache |
+
 ---
 
 ## 4. SSE
