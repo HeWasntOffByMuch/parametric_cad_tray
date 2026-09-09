@@ -194,6 +194,10 @@ else
       "state=$(printf %s "$again" | jget state) - is the artifacts volume mounted?"
 fi
 
+# Read before the download below, compared after it: this script only ever
+# builds an untouched preset, which must never count as a custom mold.
+before="$(curl -fsS --max-time 15 "$BASE/api/stats" 2>/dev/null | jget custom_molds_generated)"
+
 step "export"
 exp="$(curl -fsS --max-time 30 -X POST "$BASE/api/export" \
         -H 'content-type: application/json' -d "{\"params\":$params}")"
@@ -220,6 +224,30 @@ else
   else
     bad "the export job did not complete" "$(printf %s "$exp" | jget error)"
   fi
+fi
+
+# --- usage analytics --------------------------------------------------------
+# Read-only on purpose. Analytics is isolated from failure by design, so an
+# unwritable database is deliberately invisible from out here - the deploy
+# workflow checks that on the host, where it can actually be seen. What this
+# proves is that the endpoint answers with the shape the frontend reads, and
+# that the preset this script just downloaded did not move the public counter.
+step "usage analytics"
+stats="$(curl -fsS --max-time 15 "$BASE/api/stats" 2>&1)"
+after="$(printf %s "$stats" | jget custom_molds_generated)"
+if printf %s "$stats" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+keys = ("custom_molds_generated", "unique_designs_downloaded", "total_artifact_downloads")
+assert all(isinstance(d.get(k), int) and d[k] >= 0 for k in keys), d' 2>/dev/null; then
+  ok "GET /api/stats -> three counters (${after:-?} custom molds)"
+else
+  bad "GET /api/stats is not the shape the frontend reads" "$stats"
+fi
+
+if [ -n "${before:-}" ] && [ -n "${after:-}" ]; then
+  [ "$before" = "$after" ] \
+    && ok "an untouched preset download did not move the counter" \
+    || bad "the public counter moved for a preset download" "$before -> $after"
 fi
 
 printf '\n\033[1m%d passed, %d failed\033[0m\n' "$pass" "$fail"

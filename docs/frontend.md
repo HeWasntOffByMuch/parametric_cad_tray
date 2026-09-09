@@ -24,6 +24,7 @@ packages/web/
       urlState.ts      shareable links and localStorage
     viewer/Viewer.tsx  R3F canvas over the GLB
     panels/            status, derived values, diagnostics, export, controls
+    analytics.ts       anonymous ids, first-touch source, fire-and-forget events
     App.tsx
 ```
 
@@ -218,6 +219,31 @@ sent to the server, and requires no server-side routing.
 
 ---
 
+## 7a. The usage counter
+
+`panels/UsageCounter.tsx` shows one number in the header — *"1,204 custom molds
+generated"* — read once from `GET /api/stats`. It renders `null` unless the
+count is a finite number greater than zero, so a failed request, a disabled
+backend or a genuinely empty database all show nothing rather than a "0" or an
+error. The counter is decoration; its absence is its failure mode.
+
+`analytics.ts` is the other half. Two random `crypto.randomUUID()` ids — a
+visitor in `localStorage`, a session in `sessionStorage` — plus first-touch
+attribution from `utm_*` and the referrer's **origin only**. Nothing is derived
+from the IP, the user agent, the screen or the canvas; if storage is
+unavailable the ids are transient and the visit counts as new. Four events
+(`app_opened`, `config_engaged`, `share_link_copied`, `makerworld_clicked`) go
+out through `sendBeacon`, falling back to `fetch(keepalive)` — `makerworld_clicked`
+is why: it has to survive the navigation it reports.
+
+Every function in the module swallows its own errors and none of them can move
+the public counter; only an artifact the server actually served does that. The
+ids ride download links as `?s=&v=` because a download is a plain browser
+navigation and carries no headers of ours.
+[`docs/analytics.md`](analytics.md) is the full account.
+
+---
+
 ## 8. Deployment
 
 `vite.config.ts` sets `base: './'`, so every asset URL is relative and one build
@@ -246,6 +272,7 @@ and how to rehearse the whole thing locally — is
 | `VITE_API_BASE_URL` | build | default backend URL baked into the bundle |
 | `window.__TRAYMOLD_API_BASE__` | runtime | editable in the deployed `index.html` |
 | `?api=` | runtime | per-visit override, remembered in localStorage |
+| `VITE_MODEL_URL` | build | the model listing page linked in the header; unset hides the link |
 | `TRAYAPI_ALLOWED_ORIGINS` | API | CORS origins, comma separated; `*` is development only |
 | `TRAYAPI_WORKERS` | API | CAD worker processes (default 2) |
 | `TRAYAPI_BUILD_TIMEOUT_S` | API | per-build wall clock (default 120) |
@@ -257,6 +284,8 @@ and how to rehearse the whole thing locally — is
 | `TRAYAPI_RATE_LIMIT_REQUESTS` / `_WINDOW_S` | API | build requests per client per window (20 / 60 s) |
 | `TRAYAPI_MAX_CONCURRENT_JOBS_PER_CLIENT` | API | in-flight builds per client (default 3) |
 | `TRAYAPI_MAX_REQUEST_BYTES` | API | request body ceiling (default 256 kB) |
+| `TRAYMOLD_ANALYTICS_DB` | API | usage database path; empty disables analytics ([`analytics.md`](analytics.md)) |
+| `TRAYAPI_ANALYTICS_RATE_LIMIT` / `_WINDOW_S` | API | client events per client per window (60 / 60 s) |
 
 `make dev` starts the API with its worker pool and the Vite dev server together;
 `make doctor` prints the resolved configuration and pings health.

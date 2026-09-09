@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { markEngagedOnce, track } from './analytics'
 import { ApiError, api } from './api/client'
 import type { Json, Preset, SchemaResponse } from './api/types'
 import { SchemaForm } from './form/SchemaForm'
@@ -6,6 +7,7 @@ import { DerivedPanel } from './panels/DerivedPanel'
 import { DiagnosticsPanel } from './panels/DiagnosticsPanel'
 import { ExportPanel } from './panels/ExportPanel'
 import { PreviewStatus } from './panels/PreviewStatus'
+import { UsageCounter } from './panels/UsageCounter'
 import { ViewerControls } from './panels/ViewerControls'
 import { useDesign, type DesignOptions } from './state/useDesign'
 import { restoreDesign, shareUrl } from './state/urlState'
@@ -13,6 +15,16 @@ import { Viewer, type PartMode, type ViewMode } from './viewer/Viewer'
 
 /** The preset a first-time visitor lands on. */
 const DEFAULT_PRESET = 'ref-4x7'
+
+/**
+ * The model listing this generator belongs to - a MakerWorld page, a Printables
+ * page, anything. Configured at build time, and absent by default: a link to a
+ * page that is not this project's is worse than no link.
+ *
+ * A plain anchor, not a redirect through a tracking endpoint. The click is
+ * recorded alongside the navigation the user asked for, never in the way of it.
+ */
+const MODEL_URL: string = import.meta.env?.VITE_MODEL_URL ?? ''
 
 export function App({ options }: { options?: DesignOptions } = {}) {
   const [schema, setSchema] = useState<SchemaResponse | null>(null)
@@ -66,6 +78,13 @@ export function App({ options }: { options?: DesignOptions } = {}) {
     [presets, actions],
   )
 
+  const opened = useRef(false)
+  useEffect(() => {
+    if (opened.current) return
+    opened.current = true
+    track('app_opened')
+  }, [])
+
   const share = useCallback(async () => {
     const url = await shareUrl(design.params)
     setShared(url)
@@ -74,7 +93,18 @@ export function App({ options }: { options?: DesignOptions } = {}) {
     } catch {
       /* clipboard is unavailable outside a secure context */
     }
+    track('share_link_copied')
   }, [design.params])
+
+  // Once per session, on the first real parameter change - not per keystroke
+  // and not per slider frame.
+  const onParamsChanged = useCallback(
+    (next: Json) => {
+      if (markEngagedOnce()) track('config_engaged')
+      actions.setParams(next)
+    },
+    [actions],
+  )
 
   const stale = design.previewState === 'dirty'
   const blocked = design.errors.length > 0
@@ -125,6 +155,18 @@ export function App({ options }: { options?: DesignOptions } = {}) {
           </select>
         </label>
         <span className="spacer" />
+        <UsageCounter />
+        {MODEL_URL && (
+          <a
+            className="model-link"
+            href={MODEL_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            onClick={() => track('makerworld_clicked')}
+          >
+            Model page
+          </a>
+        )}
         <label className="checkbox experimental">
           <input
             type="checkbox"
@@ -152,7 +194,7 @@ export function App({ options }: { options?: DesignOptions } = {}) {
           value={design.params}
           diagnostics={design.diagnostics}
           allowExperimental={design.allowExperimental}
-          onChange={(next) => actions.setParams(next)}
+          onChange={onParamsChanged}
           onCommit={actions.commit}
         />
       </aside>

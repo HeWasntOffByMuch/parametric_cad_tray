@@ -29,7 +29,7 @@ unprivileged ports.
 
 ```bash
 make deploy-local      # build and start the containerised stack on :8080
-make deploy-smoke      # 19 checks: TLS, CORS, SSE buffering, cache, exports
+make deploy-smoke      # 21 checks: TLS, CORS, SSE buffering, cache, exports, stats
 make deploy-local-web  # the GitHub Pages build, pointed at that stack
 make deploy-down
 ```
@@ -43,6 +43,7 @@ make deploy-down
 | [`docs/api.md`](docs/api.md) | the HTTP contract, workers, caching, job lifecycle |
 | [`docs/frontend.md`](docs/frontend.md) | the browser application, its state machine and viewer |
 | [`docs/deployment.md`](docs/deployment.md) | GitHub Pages, the VPS, and rehearsing both locally |
+| [`docs/analytics.md`](docs/analytics.md) | what the public usage counter counts, and the data behind it |
 
 ## The rule the whole project is built around
 

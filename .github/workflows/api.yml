@@ -176,6 +176,7 @@ jobs:
           PROXY: ${{ vars.TRAYMOLD_PROXY }}
           API_BIND: ${{ vars.TRAYMOLD_API_BIND }}
           PROXY_NETWORK: ${{ vars.TRAYMOLD_PROXY_NETWORK }}
+          ANALYTICS_DB: ${{ vars.TRAYMOLD_ANALYTICS_DB }}
         run: |
           # Pinned to this commit, not to :latest, so the VPS runs exactly what
           # this run built and a rollback is re-running an older workflow.
@@ -189,6 +190,18 @@ jobs:
           TRAYMOLD_API_BIND=${API_BIND:-127.0.0.1:8000}
           TRAYMOLD_PROXY_NETWORK=${PROXY_NETWORK}
           EOF
+
+          # A repository variable cannot be distinguished from an empty one, so
+          # analytics is on by default (compose supplies the path in its own
+          # volume) and the variable exists to move the file or to switch it off.
+          case "${ANALYTICS_DB}" in
+            "")            echo "analytics: on, default path" ;;
+            off|none|"0")  echo 'TRAYMOLD_ANALYTICS_DB=' >> deploy/.env
+                           echo "analytics: off (TRAYMOLD_ANALYTICS_DB=${ANALYTICS_DB})" ;;
+            *)             echo "TRAYMOLD_ANALYTICS_DB=${ANALYTICS_DB}" >> deploy/.env
+                           echo "analytics: on, ${ANALYTICS_DB}" ;;
+          esac
+
           rm -f deploy/.env.local
 
           # A containerised proxy cannot reach a loopback-bound API - inside it,
@@ -293,6 +306,53 @@ jobs:
           BIND="${API_BIND:-127.0.0.1:8000}"
           ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" "$USER@$HOST" \
             "curl -fsS --max-time 15 http://${BIND}/api/health" | python3 -m json.tool
+
+      # Analytics swallows its own failures by design, so an unwritable database
+      # is invisible from the public smoke below. It is visible here, and only
+      # here: this is the one place that can tell "the volume is not mounted"
+      # from "nobody has downloaded anything yet". A warning, never a failure -
+      # a counter is not worth failing a deploy over.
+      - name: Check the analytics database is writable
+        continue-on-error: true
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          cat > /tmp/check-analytics.py <<'PY'
+          from trayapi.analytics import db
+
+          if not db.enabled():
+              print("analytics disabled")
+          else:
+              # A read proves the file opened; only a write proves the volume is
+              # not read-only and not owned by the wrong uid, which is the whole
+              # question. The row is removed in the same transaction.
+              conn = db.connect()
+              now = db.utcnow()
+              with conn:
+                  conn.execute(
+                      "INSERT OR REPLACE INTO sessions (session_id, visitor_id,"
+                      " first_seen_at, last_seen_at, source) VALUES (?,?,?,?,?)",
+                      ("deploy-check", "deploy-check", now, now, "direct"))
+                  conn.execute("DELETE FROM sessions WHERE session_id='deploy-check'")
+              rows = conn.execute("SELECT COUNT(*) FROM qualified_usages").fetchone()[0]
+              print(f"analytics ok: {db.database_path()} ({rows} qualified usages)")
+          PY
+
+          # The script arrives on stdin, so nothing has to survive two levels of
+          # shell quoting.
+          if ! out="$(ssh -i "$HOME/.ssh/id_deploy" -p "${PORT:-22}" "$USER@$HOST" \
+                 "cd '$APP_DIR' && docker compose $COMPOSE_FILE_ARGS --env-file .env exec -T api python -" \
+                 < /tmp/check-analytics.py 2>&1)"; then
+            echo "::warning::Could not check the analytics database: $out"
+            exit 0
+          fi
+          echo "$out"
+          case "$out" in
+            *"analytics ok"*|*"analytics disabled"*) ;;
+            *) echo "::warning::The analytics database did not open. Check that the traymold_analytics volume is mounted and writable by uid 10001." ;;
+          esac
 
       - name: Smoke the live deployment
         env:

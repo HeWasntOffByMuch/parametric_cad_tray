@@ -4,6 +4,7 @@
 #   make api            just the API
 #   make web            just the frontend
 #   make test           every suite: core, API, frontend
+#   make analytics      the usage report for the local database
 #
 #   make deploy-local   the production stack in Docker, TLS off, on :8080
 #   make deploy-smoke   exercise a running stack the way the browser does
@@ -19,8 +20,13 @@ WEB_PORT ?= 5173
 # The Vite dev server proxies /api, so the browser needs no CORS in development.
 export TRAYAPI_ALLOWED_ORIGINS ?= http://localhost:$(WEB_PORT),http://127.0.0.1:$(WEB_PORT)
 export TRAYAPI_CACHE_DIR ?= $(CURDIR)/.cache/artifacts
+# Usage analytics, local and disposable: .cache/ is gitignored and is a sibling
+# of the artifact cache rather than inside it, so sweeping artifacts never
+# touches the database. Set it to nothing to develop with analytics off:
+#   TRAYMOLD_ANALYTICS_DB= make dev
+export TRAYMOLD_ANALYTICS_DB ?= $(CURDIR)/.cache/analytics/analytics.sqlite3
 
-.PHONY: dev api web install test test-core test-api test-web build clean doctor \
+.PHONY: dev api web install test test-core test-api test-web build clean doctor analytics \
         deploy-local deploy-local-web deploy-smoke deploy-down deploy-logs deploy-check
 
 install:
@@ -51,17 +57,25 @@ test: test-core test-api test-web
 test-core:
 	$(PY) -m pytest $(CORE)/tests -q
 
+# Analytics off unless a test turns it on for itself, so a suite run never
+# writes into the database `make dev` is filling.
 test-api:
-	$(PY) -m pytest $(API)/tests -q
+	TRAYMOLD_ANALYTICS_DB= $(PY) -m pytest $(API)/tests -q
 
 test-web:
 	cd $(WEB) && npm run test
+
+## Read the usage analytics the running API has collected.
+analytics:
+	@test -n "$(TRAYMOLD_ANALYTICS_DB)" || { echo "TRAYMOLD_ANALYTICS_DB is empty: analytics is disabled."; exit 1; }
+	$(PY) -m trayapi.analytics.report --db $(TRAYMOLD_ANALYTICS_DB)
 
 ## Print the resolved configuration and check the API answers.
 doctor:
 	@echo "PYTHONPATH        $(PYTHONPATH)"
 	@echo "cache dir         $(TRAYAPI_CACHE_DIR)"
 	@echo "allowed origins   $(TRAYAPI_ALLOWED_ORIGINS)"
+	@echo "analytics db      $(if $(TRAYMOLD_ANALYTICS_DB),$(TRAYMOLD_ANALYTICS_DB),(disabled))"
 	@curl -sf http://127.0.0.1:$(API_PORT)/api/health | head -c 400 || echo "API not running"
 
 clean:

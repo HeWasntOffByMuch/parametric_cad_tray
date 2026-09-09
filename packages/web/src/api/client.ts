@@ -1,4 +1,5 @@
 import { apiUrl } from '../config'
+import { ids } from '../analytics'
 import type { Job, Json, Preset, SchemaResponse, ValidateResponse } from './types'
 
 export class ApiError extends Error {
@@ -51,6 +52,9 @@ export const api = {
   version: () => request<Json>('/api/version'),
   health: () => request<Json>('/api/health'),
 
+  /** Public counters. Any failure is the caller's to ignore, not to surface. */
+  stats: () => request<Json>('/api/stats'),
+
   validate: (params: Json, allowExperimental = false, signal?: AbortSignal) =>
     request<ValidateResponse>('/api/validate', {
       method: 'POST',
@@ -61,7 +65,13 @@ export const api = {
   preview: (params: Json, allowExperimental = false) =>
     request<Job>('/api/preview', {
       method: 'POST',
-      body: JSON.stringify({ params, allow_experimental: allowExperimental }),
+      // The session rides the build request so the server can attribute the
+      // outcome itself, rather than believing a later claim from the browser.
+      body: JSON.stringify({
+        params,
+        allow_experimental: allowExperimental,
+        session_id: ids().session_id,
+      }),
     }),
 
   export: (
@@ -76,6 +86,7 @@ export const api = {
         parts: opts.parts,
         formats: opts.formats,
         allow_experimental: allowExperimental,
+        session_id: ids().session_id,
       }),
     }),
 

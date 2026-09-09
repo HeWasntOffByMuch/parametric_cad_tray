@@ -62,10 +62,12 @@ document before anything is hashed, so `build(params, quality="preview")` and
 | POST | `/api/export` | **202** job, **200** on a cache hit | export quality → STEP + STL |
 | GET | `/api/jobs/{id}` | 200 / 404 | job state |
 | POST | `/api/jobs/{id}/cancel` | 200 / 404 | |
-| GET | `/api/artifacts/{key}/{name}` | 200 / 404 | one file |
+| GET | `/api/artifacts/{key}/{name}` | 200 / 404 | one file; optional `?s=&v=` anonymous ids |
 | GET | `/api/artifacts/{key}/bundle.zip` | 200 / 404 | every artifact + `result.json` |
 | GET | `/api/jobs/{id}/events` | 200 | server-sent events, one frame per transition |
 | GET | `/api/health` | 200 | status, worker pool, cache stats, limits; runs no geometry |
+| GET | `/api/stats` | 200 | three public usage counters |
+| POST | `/api/analytics/event` | **204** always | four client events; cannot move the counter |
 | GET | `/` | 200 | developer harness, not the product UI |
 
 Invalid parameters return **422** with
@@ -75,6 +77,14 @@ build**.
 The artifact endpoints are additions to the requested list: a job hands back
 URLs, so something has to serve them. Both single files and a zip are offered, so
 a caller can take one part or the pair.
+
+`/api/stats` and `/api/analytics/event` are the usage-analytics surface. `s` and
+`v` on an artifact URL are opaque, client-generated, anonymous ids — a download
+is a plain browser navigation and carries no headers of ours, so that is the only
+way the server can attribute a file to a session. Both endpoints degrade to
+zeros and 204s when analytics is disabled, and nothing on this surface can be
+made to fail a build, an export or a download. See
+[`analytics.md`](analytics.md).
 
 There is exactly one authoritative schema. `test_schema.py` asserts the served
 document is byte-identical to `Params.model_json_schema()`; UI hints live in a

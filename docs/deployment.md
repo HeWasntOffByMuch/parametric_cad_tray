@@ -23,7 +23,7 @@ image built from your checkout instead of pulled from GHCR.
 
 ```bash
 make deploy-local      # build, start, wait for healthy       (~5 min cold)
-make deploy-smoke      # 19 checks against http://localhost:8080
+make deploy-smoke      # 21 checks against http://localhost:8080
 make deploy-local-web  # the Pages build, pointed at that stack, on :4173
 make deploy-logs       # follow both containers
 make deploy-down       # stop and remove
@@ -38,7 +38,7 @@ Later builds reuse the layer unless `deploy/requirements.txt` changes.
 ### What the smoke script checks
 
 `deploy/smoke.sh` deliberately tests the things a *deployment* gets wrong, not
-the things a geometry change gets wrong — the 249 tests already cover the
+the things a geometry change gets wrong — the 252 tests already cover the
 latter. In order:
 
 | check | what it would catch |
@@ -56,6 +56,8 @@ latter. In order:
 | the GLB parses, with male and female as separate nodes | the preview would render as one unselectable blob |
 | an identical request comes back `cached` in milliseconds | the artifacts volume is not mounted, so nothing persists |
 | an export produces STEP and STL, and `bundle.zip` downloads | large binary responses survive the proxy |
+| `/api/stats` returns three counters | the frontend's usage counter would silently vanish |
+| the counter did not move for the preset this script downloaded | an untouched preset is being counted as a custom mold |
 
 The SSE ordering check is the one worth understanding. If Caddy buffers the
 event stream, every event still arrives — just all at once, when the connection
@@ -350,7 +352,9 @@ long-lived registry credential is stored on the host.
 | `TRAYMOLD_MEMORY_LIMIT` | defaults to `3g` | api |
 | `TRAYMOLD_API_BIND` | defaults to `127.0.0.1:8000`; change the port if something else on the host has it | api |
 | `TRAYMOLD_PROXY_NETWORK` | the docker network an existing containerised proxy is on; joins the API to it as `traymold-api` | api |
+| `TRAYMOLD_ANALYTICS_DB` | leave unset for the default path in the `traymold_analytics` volume; `off` disables analytics — see [`analytics.md`](analytics.md) | api |
 | `TRAYMOLD_API_BASE_URL` | only if the API is not plain https on `TRAYMOLD_API_DOMAIN` | pages |
+| `TRAYMOLD_MODEL_URL` | the model listing page linked in the header, e.g. a MakerWorld model; unset hides the link | pages |
 
 The frontend build takes its API URL from `TRAYMOLD_API_BASE_URL` if set and
 otherwise from `https://$TRAYMOLD_API_DOMAIN`, so the host is normally
@@ -435,6 +439,18 @@ docker compose --env-file .env down
 docker volume rm traymold_artifacts
 ```
 
+The `traymold_analytics` volume is the other one, and it is not the same kind of
+thing: it holds the usage database, it is never swept, and removing it discards
+the counter. Keep them separate.
+
+```bash
+docker compose --env-file .env exec api python -m trayapi.analytics.report
+curl -s https://api.example.com/api/stats | python3 -m json.tool
+```
+
+[`docs/analytics.md`](analytics.md) is the whole of it: what the number counts,
+what is and is not collected, how to back the file up and how to turn it off.
+
 ### When something is wrong
 
 | symptom | look at |
@@ -447,6 +463,8 @@ docker volume rm traymold_artifacts
 | `429` on ordinary use | `TRAYAPI_RATE_LIMIT_REQUESTS`; note that cache hits and deduplicated attaches consume no concurrency slot, so a low limit here is a real limit |
 | the container restarts under load | `TRAYMOLD_MEMORY_LIMIT`, or fewer `TRAYAPI_WORKERS` |
 | every request rebuilds | the artifacts volume is not mounted; check `docker compose config` |
+| the usage counter never appears | `/api/stats` returns zeros: either `TRAYMOLD_ANALYTICS_DB` is empty, or nothing has been downloaded yet — the UI renders nothing for a zero |
+| the counter resets after a redeploy | the `traymold_analytics` volume is not mounted, so the database is in the container's writable layer |
 
 ---
 

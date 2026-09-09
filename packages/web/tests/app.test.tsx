@@ -134,3 +134,39 @@ describe('unsupported and experimental parameters', () => {
     expect(screen.getByLabelText('Draft Angle')).toBeEnabled()
   })
 })
+
+describe('usage counter', () => {
+  it('shows the public number when the endpoint returns one', async () => {
+    backend.stats = { custom_molds_generated: 1284, unique_designs_downloaded: 900,
+                      total_artifact_downloads: 2100 }
+    await boot()
+    await waitFor(() => expect(screen.getByTestId('usage-counter')).toBeInTheDocument())
+    // Formatted, and worded for what the metric actually measures.
+    expect(screen.getByTestId('usage-counter')).toHaveTextContent('1,284 custom molds generated')
+  })
+
+  it('says "mold" rather than "molds" when there is exactly one', async () => {
+    backend.stats = { custom_molds_generated: 1, unique_designs_downloaded: 1,
+                      total_artifact_downloads: 3 }
+    await boot()
+    await waitFor(() => expect(screen.getByTestId('usage-counter')).toBeInTheDocument())
+    expect(screen.getByTestId('usage-counter')).toHaveTextContent('1 custom mold generated')
+  })
+
+  it('hides itself when the stats endpoint fails', async () => {
+    backend.statsError = true
+    await boot()
+    await act(async () => { await new Promise((r) => setTimeout(r, 150)) })
+    // Absent, not an error message and not a zero.
+    expect(screen.queryByTestId('usage-counter')).not.toBeInTheDocument()
+    expect(screen.queryByText(/custom molds/i)).not.toBeInTheDocument()
+  })
+
+  it('hides itself when the count is zero', async () => {
+    backend.stats = { custom_molds_generated: 0, unique_designs_downloaded: 0,
+                      total_artifact_downloads: 0 }
+    await boot()
+    await act(async () => { await new Promise((r) => setTimeout(r, 150)) })
+    expect(screen.queryByTestId('usage-counter')).not.toBeInTheDocument()
+  })
+})

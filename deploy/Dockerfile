@@ -46,8 +46,13 @@ RUN python -m compileall -q /app/packages >/dev/null
 
 # Not root. The pool spawns subprocesses and writes STEP/STL/GLB into the cache
 # volume; neither needs privileges.
+# Both mount points exist in the image and are owned by the app user, because
+# a named volume inherits the ownership of the directory it covers - create it
+# only at run time and docker makes it root-owned, which this user cannot write.
+# The two are separate directories on purpose: artifacts are swept on size and
+# age, and the analytics database must never be inside something that is swept.
 RUN useradd --system --uid 10001 --create-home --home-dir /home/traymold traymold \
-    && mkdir -p /var/lib/traymold/artifacts \
+    && mkdir -p /var/lib/traymold/artifacts /var/lib/traymold/analytics \
     && chown -R traymold:traymold /var/lib/traymold /app
 
 USER traymold

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { ApiError, api } from '../api/client'
 import { followJob } from '../api/jobStream'
+import { withSession } from '../analytics'
 import { apiUrl } from '../config'
 import type { Job, Json } from '../api/types'
 
@@ -119,7 +120,7 @@ export function ExportPanel({ params, disabled, allowExperimental }: { params: J
         <ul className="artifacts" data-testid="export-artifacts">
           {artifacts.map((artifact) => (
             <li key={artifact.name}>
-              <a href={apiUrl(artifact.url)} download={artifact.name}>
+              <a href={withSession(apiUrl(artifact.url))} download={artifact.name}>
                 <span>{artifactLabel(artifact.part, artifact.format)}</span>
                 <span className="artifact-size">{fileSize(artifact.bytes)}</span>
               </a>
@@ -127,7 +128,7 @@ export function ExportPanel({ params, disabled, allowExperimental }: { params: J
           ))}
           {job?.bundle_url && (
             <li>
-              <a href={apiUrl(job.bundle_url)} download="tray-mold.zip">
+              <a href={withSession(apiUrl(job.bundle_url))} download="tray-mold.zip">
                 <span>Complete bundle</span>
                 <span className="artifact-size">ZIP</span>
               </a>

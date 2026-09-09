@@ -47,5 +47,17 @@ class Settings:
     cache_max_age_s: float = _float("TRAYAPI_CACHE_MAX_AGE_S", 7 * 24 * 3600)
     cache_sweep_interval_s: float = _float("TRAYAPI_CACHE_SWEEP_INTERVAL_S", 300.0)
 
+    # -- usage analytics ---------------------------------------------------
+    #: SQLite file for product analytics. Empty disables analytics entirely,
+    #: which is the default: nothing should start writing a database into
+    #: whatever directory a developer happened to run the server from. It also
+    #: must not live beside the artifact cache - that directory is swept.
+    #: Production: TRAYMOLD_ANALYTICS_DB=/var/lib/traymold/analytics/analytics.sqlite3
+    analytics_db: str = os.environ.get("TRAYMOLD_ANALYTICS_DB", "").strip()
+    #: Client events are cheap but a browser can loop; this is its own budget,
+    #: separate from the build limiter, so telemetry can never starve a build.
+    analytics_rate_limit: int = _int("TRAYAPI_ANALYTICS_RATE_LIMIT", 60)
+    analytics_rate_window_s: float = _float("TRAYAPI_ANALYTICS_RATE_WINDOW_S", 60.0)
+
 
 SETTINGS = Settings()

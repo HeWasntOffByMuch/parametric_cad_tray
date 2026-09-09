@@ -557,3 +557,27 @@ button.lg { height: 36px; font-size: 13px; }
   header .preset { flex: 1 1 auto; }
   .header-rule { display: none; }
 }
+
+/* -- usage counter and model link ---------------------------------------- */
+/* Both live in the header at the quietest contrast step available: present for
+   anyone who looks, never competing with the configurator. */
+.usage-counter {
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.usage-counter strong { color: var(--text-2); font-weight: 600; }
+
+.model-link {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0 var(--s1);
+}
+.model-link:hover { color: var(--text-2); text-decoration: underline; }
+
+@media (max-width: 1200px) {
+  .usage-counter { order: 10; }
+}

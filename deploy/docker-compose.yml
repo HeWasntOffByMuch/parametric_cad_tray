@@ -36,10 +36,18 @@ services:
       TRAYAPI_MAX_REQUEST_BYTES: ${TRAYAPI_MAX_REQUEST_BYTES:-262144}
       TRAYAPI_CACHE_MAX_BYTES: ${TRAYAPI_CACHE_MAX_BYTES:-2147483648}
       TRAYAPI_CACHE_MAX_AGE_S: ${TRAYAPI_CACHE_MAX_AGE_S:-604800}
+      # Usage analytics. No colon in the substitution, deliberately: an absent
+      # line gets the default path, and a line set to nothing turns analytics
+      # off. Its directory is a volume of its own, never the artifact cache.
+      TRAYMOLD_ANALYTICS_DB: ${TRAYMOLD_ANALYTICS_DB-/var/lib/traymold/analytics/analytics.sqlite3}
     volumes:
       # Content-addressed, so it survives a redeploy and every cache hit after
       # one is a 4 ms file read instead of a 2.5 s build.
       - artifacts:/var/lib/traymold/artifacts
+      # The analytics database, and only that. Separate from the artifacts
+      # volume because that one is swept on size and age; this one is the record
+      # and is only ever appended to.
+      - analytics:/var/lib/traymold/analytics
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
       interval: 30s
@@ -89,5 +97,6 @@ services:
 
 volumes:
   artifacts:
+  analytics:
   caddy_data:
   caddy_config:

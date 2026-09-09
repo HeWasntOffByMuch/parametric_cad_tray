@@ -15,6 +15,11 @@ export class FakeBackend {
   jobs = new Map<string, Job>()
   /** overrides, applied in order of specificity */
   validateResponse: ((params: Json) => any) | null = null
+  /** Public counters the app may display; null means the endpoint is absent. */
+  stats: any = null
+  statsError = false
+  /** Every client telemetry event the app sent, in order. */
+  events: any[] = []
   previewResponse: ((params: Json, id: string) => Job) | null = null
   exportResponse: ((body: any, id: string) => Job) | null = null
   private counter = 0
@@ -67,6 +72,15 @@ export class FakeBackend {
         new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
 
       if (url.endsWith('/api/schema')) return ok(SCHEMA)
+      if (url.endsWith('/api/stats')) {
+        if (backend.statsError) return new Response('nope', { status: 503 })
+        return ok(backend.stats ?? { custom_molds_generated: 0, unique_designs_downloaded: 0,
+                                     total_artifact_downloads: 0 })
+      }
+      if (url.endsWith('/api/analytics/event')) {
+        backend.events.push(body)
+        return new Response(null, { status: 204 })
+      }
       if (url.endsWith('/api/presets')) return ok(PRESETS)
 
       if (url.endsWith('/api/validate')) {

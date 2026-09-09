@@ -11,6 +11,18 @@ sys.path.insert(0, str(ROOT / "packages" / "api"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
+@pytest.fixture(autouse=True)
+def analytics_off(monkeypatch):
+    """Analytics is off for every test that does not ask for it.
+
+    Without this the suite inherits whatever `TRAYMOLD_ANALYTICS_DB` the shell
+    has - which for a developer running `make dev` is a real database - and a
+    test run would quietly write hundreds of rows into it. Tests that exercise
+    analytics set the variable themselves; monkeypatch lets the inner setenv win.
+    """
+    monkeypatch.setenv("TRAYMOLD_ANALYTICS_DB", "")
+
+
 @pytest.fixture
 def cache_dir():
     path = Path(tempfile.mkdtemp(prefix="trayapi-test-"))

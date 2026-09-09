@@ -27,13 +27,16 @@ from traymold.api import apply_options, environment, json_schema, defaults, vali
 from traymold.presets import PRESETS
 from traymold.version import MODEL_VERSION, SCHEMA_VERSION
 
+from . import analytics
 from .cache import ArtifactCache
 from .jobs import DEFAULT_FORMATS, Job, JobManager
 from .limits import RateLimiter
 from .settings import SETTINGS
 from .models import (
+    AnalyticsEvent,
     ArtifactModel,
     HealthResponse,
+    StatsResponse,
     BuildRequest,
     JobResponse,
     PresetSummary,
@@ -84,10 +87,17 @@ def create_app(
 
     app = FastAPI(title="traymold API", version=API_VERSION, lifespan=lifespan)
     app.state.limiter = limiter or RateLimiter()
-    app.state.jobs = jobs or JobManager(cache=cache)
-    app.state.jobs.on_finish = lambda job: (
-        app.state.limiter.release(job.client) if job.client else None
+    app.state.analytics_limiter = RateLimiter(
+        requests=SETTINGS.analytics_rate_limit, window_s=SETTINGS.analytics_rate_window_s
     )
+    app.state.jobs = jobs or JobManager(cache=cache)
+
+    def _finished(job: Job) -> None:
+        if job.client:
+            app.state.limiter.release(job.client)
+        _record_job_finished(job)
+
+    app.state.jobs.on_finish = _finished
     app.state.started_at = time.time()
 
     app.add_middleware(
@@ -173,11 +183,11 @@ def create_app(
     # -- jobs --------------------------------------------------------------
     @app.post("/api/preview", response_model=JobResponse, status_code=202)
     def preview(request: BuildRequest, response: Response, http: Request) -> JobResponse:
-        return _submit(app, "preview", request, response, _client(http))
+        return _submit(app, "preview", request, response, _client(http), request.session_id)
 
     @app.post("/api/export", response_model=JobResponse, status_code=202)
     def export(request: BuildRequest, response: Response, http: Request) -> JobResponse:
-        return _submit(app, "export", request, response, _client(http))
+        return _submit(app, "export", request, response, _client(http), request.session_id)
 
     @app.get("/api/jobs/{job_id}/events")
     async def job_events(job_id: str):
@@ -214,18 +224,52 @@ def create_app(
 
     # -- artifacts ---------------------------------------------------------
     @app.get("/api/artifacts/{key}/bundle.zip")
-    def bundle(key: str):
+    def bundle(key: str, s: str | None = None, v: str | None = None):
         path = app.state.jobs.cache.bundle(key)
         if path is None:
             raise HTTPException(status_code=404, detail="unknown build")
+        # Recorded only once the file exists and is about to be served, so a
+        # probe for a key that is not there cannot inflate anything.
+        _safe(analytics.record_download, key, "bundle.zip", session_id=s, visitor_id=v)
         return FileResponse(path, media_type="application/zip", filename="tray-mold.zip")
 
     @app.get("/api/artifacts/{key}/{name}")
-    def artifact(key: str, name: str):
+    def artifact(key: str, name: str, s: str | None = None, v: str | None = None):
         path = app.state.jobs.cache.artifact_path(key, name)
         if path is None:
             raise HTTPException(status_code=404, detail="unknown artifact")
+        _safe(analytics.record_download, key, name, session_id=s, visitor_id=v)
         return FileResponse(path, media_type=_media_type(path), filename=path.name)
+
+    # -- usage analytics ---------------------------------------------------
+    @app.get("/api/stats", response_model=StatsResponse)
+    def stats() -> StatsResponse:
+        """Public counters. Safe to display; nothing here identifies anyone."""
+        try:
+            return StatsResponse(**analytics.public_stats())
+        except Exception:  # pragma: no cover
+            log.warning("stats query failed", exc_info=True)
+            return StatsResponse(custom_molds_generated=0, unique_designs_downloaded=0,
+                                 total_artifact_downloads=0)
+
+    @app.post("/api/analytics/event", status_code=204)
+    def analytics_event(event: AnalyticsEvent, http: Request) -> Response:
+        """The four events a browser is allowed to report.
+
+        Client telemetry describes the funnel and never the counter: no event
+        accepted here can create a qualified usage. The event name is a closed
+        enum on the model, so an unknown name is a 422 rather than a new row.
+        """
+        if not app.state.analytics_limiter.check_rate(_client(http)).allowed:
+            # Telemetry is not worth a retry storm; refuse quietly.
+            return Response(status_code=204)
+        _safe(
+            analytics.record_client_event,
+            event.event, event.session_id, event.visitor_id,
+            source=event.source, medium=event.medium, campaign=event.campaign,
+            referrer=event.referrer, landing_path=event.landing_path,
+        )
+        return Response(status_code=204)
 
     @app.get("/", include_in_schema=False)
     def harness():
@@ -274,6 +318,19 @@ def _sse(payload) -> str:
     return f"event: {state}\ndata: {body}\n\n"
 
 
+def _safe(call, *args, **kwargs) -> None:
+    """Run an analytics call and swallow anything it throws.
+
+    The analytics package already handles its own errors; this is the second
+    wall. Serving a file must not depend on a future change over there staying
+    well-behaved, and a counter is never worth a 500 on a download.
+    """
+    try:
+        call(*args, **kwargs)
+    except Exception:  # pragma: no cover - the point is that nothing escapes
+        log.warning("analytics call failed; continuing", exc_info=True)
+
+
 def _client(http: Request) -> str:
     forwarded = http.headers.get("x-forwarded-for")
     if forwarded:
@@ -295,8 +352,27 @@ def _sweep_loop(app: FastAPI, stop: threading.Event) -> None:
             log.exception("cache sweep failed")
 
 
+def _record_job_finished(job: Job) -> None:
+    """A build reaching a terminal state, recorded from the job itself.
+
+    Server-side and after the fact: the duration and the outcome are the job's,
+    not something a browser reported about itself.
+    """
+    if job.state == "cancelled":
+        return
+    duration = None
+    if job.started_at and job.finished_at:
+        duration = int((job.finished_at - job.started_at) * 1000)
+    _safe(
+        analytics.record_build_event,
+        f"{job.kind}_{'completed' if job.state == 'complete' else 'failed'}",
+        session_id=job.session_id, config_hash=job.params_hash, job_id=job.id,
+        duration_ms=duration, error_code=job.error.kind if job.error else None,
+    )
+
+
 def _submit(app: FastAPI, kind: str, request: BuildRequest, response: Response,
-            client: str = "unknown") -> JobResponse:
+            client: str = "unknown", session_id: str | None = None) -> JobResponse:
     effective = _effective(request.model_copy(update={"quality": request.quality or kind}))
     result = core_validate(effective)
     diagnostics = result.diagnostics + policy_diagnostics(effective, request.allow_experimental)
@@ -309,9 +385,34 @@ def _submit(app: FastAPI, kind: str, request: BuildRequest, response: Response,
     if not rate.allowed:
         raise _too_many(rate)
 
-    job = app.state.jobs.submit(kind, effective, request.formats or DEFAULT_FORMATS[kind], client)
+    job = app.state.jobs.submit(kind, effective, request.formats or DEFAULT_FORMATS[kind],
+                                client, session_id)
+    # The cache key is what an artifact URL carries, so this is the row that
+    # lets a later download be attributed without rebuilding any geometry.
+    _safe(analytics.record_design, job.cache_key, job.params_hash, effective,
+          effective.quality.mode)
+    _safe(
+        analytics.record_build_event,
+        f"{kind}_requested", session_id=session_id, config_hash=job.params_hash,
+        job_id=job.id, params=effective,
+    )
     if job.state == "complete":
         # a cache hit costs nothing and occupies no worker
+        #
+        # It also never reaches on_finish, because nothing ran - so the
+        # completion is recorded here instead. Without this the funnel would
+        # count the request and lose the success, and since the artifact cache
+        # is content-addressed and long-lived that is the common path, not a
+        # corner: "successful previews" would read far below the truth and the
+        # failure rate far above it.
+        _safe(
+            analytics.record_build_event,
+            f"{kind}_completed", session_id=session_id, config_hash=job.params_hash,
+            job_id=job.id, params=effective,
+            # No duration: nothing was built, and a 4 ms file read among the
+            # build times would make the median a measure of cache hit rate.
+            duration_ms=None,
+        )
         response.status_code = 200
         return _job_response(job)
     if job.waiters == 1:

@@ -48,6 +48,9 @@ class Job:
     cancel: threading.Event = field(default_factory=threading.Event)
     waiters: int = 1
     client: str | None = None
+    #: Anonymous browser session, carried only so a completed or failed build
+    #: can be attributed to the funnel. Never used for rate limiting or identity.
+    session_id: str | None = None
     listeners: list = field(default_factory=list)
 
     @property
@@ -72,7 +75,8 @@ class JobManager:
         self._threads: list[threading.Thread] = []
 
     # -- submission --------------------------------------------------------
-    def submit(self, kind: str, effective_params, formats, client: str | None = None) -> Job:
+    def submit(self, kind: str, effective_params, formats, client: str | None = None,
+               session_id: str | None = None) -> Job:
         """Return a job for this request, building only if nothing else will.
 
         Three outcomes, in order of preference: a cache hit (job is born
@@ -91,7 +95,7 @@ class JobManager:
                 job = Job(id=_new_id(), kind=kind, cache_key=key, params_hash=digest,
                           state="complete", status="served from cache", cached=True,
                           report=cached, started_at=time.time(), finished_at=time.time(),
-                          client=client)
+                          client=client, session_id=session_id)
                 self._register(job)
                 return job
 
@@ -102,7 +106,8 @@ class JobManager:
                     existing.waiters += 1
                     return existing
 
-            job = Job(id=_new_id(), kind=kind, cache_key=key, params_hash=digest, client=client)
+            job = Job(id=_new_id(), kind=kind, cache_key=key, params_hash=digest, client=client,
+                      session_id=session_id)
             self._register(job)
             self._by_key[key] = job.id
             # an entry a job is about to hand out must survive a cache sweep

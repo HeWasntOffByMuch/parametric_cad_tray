@@ -32,6 +32,9 @@ class ValidateRequest(BaseModel):
 
 
 class BuildRequest(ValidateRequest):
+    #: Opaque anonymous session id from the browser, used only to attribute this
+    #: build to a funnel. Optional, bounded, and never required for a build.
+    session_id: str | None = Field(default=None, max_length=64)
     formats: list[Literal["glb", "step", "stl"]] | None = Field(
         default=None, description="defaults per endpoint: preview -> glb, export -> step+stl"
     )
@@ -78,6 +81,33 @@ class JobResponse(BaseModel):
     volumes_cm3: dict[str, float] = Field(default_factory=dict)
     timings: dict[str, float] = Field(default_factory=dict)
     error: dict[str, Any] | None = None
+
+
+class AnalyticsEvent(BaseModel):
+    """The closed set of events a browser may report.
+
+    `event` is a Literal, so an unrecognised name is rejected by validation
+    rather than becoming a row. Every field is length-bounded: this endpoint is
+    public and takes no arbitrary JSON.
+    """
+
+    event: Literal["app_opened", "config_engaged", "share_link_copied", "makerworld_clicked"]
+    session_id: str | None = Field(default=None, max_length=64)
+    visitor_id: str | None = Field(default=None, max_length=64)
+    source: str | None = Field(default=None, max_length=64)
+    medium: str | None = Field(default=None, max_length=64)
+    campaign: str | None = Field(default=None, max_length=64)
+    #: A full URL is accepted but only its hostname is ever stored.
+    referrer: str | None = Field(default=None, max_length=512)
+    landing_path: str | None = Field(default=None, max_length=128)
+
+
+class StatsResponse(BaseModel):
+    """Public counters. Nothing here is per-visitor or reversible."""
+
+    custom_molds_generated: int
+    unique_designs_downloaded: int
+    total_artifact_downloads: int
 
 
 class HealthResponse(BaseModel):
