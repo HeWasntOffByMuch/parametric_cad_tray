@@ -153,6 +153,22 @@ scene is rotated so CAD +Z is screen up.
 The part rules are pure functions (`partVisibility`, `explodeOffset`) and are
 tested without a WebGL context.
 
+### Lighting and the floor
+
+Both were built for one viewpoint and broke as soon as the camera left it.
+
+The rig had every light above the parting plane, and a hemisphere light gives a
+downward-facing face its ground colour and nothing else - which was near-black.
+Tipping under an exploded mold, exactly what you do to inspect a cavity, showed a
+black silhouette. A light now rides the camera, aimed at the origin, so the
+guarantee is positional rather than directional: whatever is turned towards you
+is lit, from any angle. The fixed key and fill still do the shaping.
+
+The grid is a floor, so it is drawn only from above (`side: FrontSide`) and sits
+under the *current* bounding box rather than a fixed fraction of the model
+radius. Exploding drops the male half well below where it sits assembled, so a
+floor placed once at load time cut straight through it.
+
 ---
 
 ## 6. Export UX

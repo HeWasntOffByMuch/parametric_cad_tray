@@ -1,5 +1,5 @@
-import { Suspense, useEffect, useMemo, useState } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Grid, OrbitControls, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { apiUrl } from '../config'
@@ -46,7 +46,7 @@ export function explodeOffset(viewMode: ViewMode): number {
   return viewMode === 'exploded' ? 60 : 0
 }
 
-function MoldScene({ url, partMode, viewMode, showMale, showFemale, setExtent }: Omit<ViewerProps, 'stale' | 'resetToken'> & { url: string; setExtent: (r: number) => void }) {
+function MoldScene({ url, partMode, viewMode, showMale, showFemale, onMeasured }: Omit<ViewerProps, 'stale' | 'resetToken'> & { url: string; onMeasured: (m: { radius: number; floorY: number }) => void }) {
   const { scene } = useGLTF(apiUrl(url))
   const cloned = useMemo(() => scene.clone(true), [scene])
   const { camera, controls } = useThree() as any
@@ -68,6 +68,18 @@ function MoldScene({ url, partMode, viewMode, showMale, showFemale, setExtent }:
     }
   }, [parts, partMode, showMale, showFemale, explode])
 
+  // Re-measured after the parts move, not just when the model loads: exploding
+  // drops the male half well below where it sits assembled, and a floor placed
+  // from the assembled box would then cut straight through it.
+  useEffect(() => {
+    const box = new THREE.Box3().setFromObject(cloned)
+    if (box.isEmpty()) return
+    onMeasured({
+      radius: box.getBoundingSphere(new THREE.Sphere()).radius,
+      floorY: box.min.y,
+    })
+  }, [cloned, explode, partMode, showMale, showFemale, onMeasured])
+
   useEffect(() => {
     const box = new THREE.Box3().setFromObject(cloned)
     if (box.isEmpty()) return
@@ -88,8 +100,7 @@ function MoldScene({ url, partMode, viewMode, showMale, showFemale, setExtent }:
       controls.target.copy(centre)
       controls.update()
     }
-    setExtent(sphere.radius)
-  }, [cloned, camera, controls, setExtent])
+  }, [cloned, camera, controls])
 
   // No rotation here. CadQuery's glTF exporter already writes the Z-up to Y-up
   // conversion onto the assembly's root node (a -90 degree quaternion about X),
@@ -97,6 +108,24 @@ function MoldScene({ url, partMode, viewMode, showMale, showFemale, setExtent }:
   // edge. The mesh data stays Z-up, which is why the explode offset above is
   // still along the parts' local Z - that is the press axis.
   return <primitive object={cloned} />
+}
+
+/**
+ * A light that rides the camera, aimed at the origin.
+ *
+ * A fixed rig can only light the sides it faces. Every light here used to be
+ * above the parting plane, and a hemisphere light gives down-facing surfaces its
+ * ground colour and nothing else - so looking up at an exploded mold showed a
+ * black silhouette. A headlight makes the guarantee positional rather than
+ * directional: whatever you have turned towards you is lit, from any angle. The
+ * fixed key and fill still do the shaping; this only sets the floor.
+ */
+function CameraLight({ intensity }: { intensity: number }) {
+  const light = useRef<THREE.DirectionalLight>(null)
+  useFrame(({ camera }) => {
+    light.current?.position.copy(camera.position)
+  })
+  return <directionalLight ref={light} intensity={intensity} />
 }
 
 /**
@@ -139,8 +168,9 @@ export function gridSpacing(radius: number): { cell: number; section: number; ex
 
 export function Viewer(props: ViewerProps) {
   const [key, setKey] = useState(0)
-  const [radius, setRadius] = useState(150)
+  const [measured, setMeasured] = useState({ radius: 150, floorY: -20 })
   useEffect(() => setKey((k) => k + 1), [props.resetToken])
+  const { radius, floorY } = measured
   const grid = gridSpacing(radius)
   const limits = cameraLimits(radius, 40)
 
@@ -152,9 +182,14 @@ export function Viewer(props: ViewerProps) {
       data-testid="viewer-canvas"
     >
       <color attach="background" args={['#12151a']} />
-      <hemisphereLight intensity={0.75} groundColor="#20242c" />
-      <directionalLight position={[300, 500, 400]} intensity={1.6} castShadow />
-      <directionalLight position={[-400, 200, -300]} intensity={0.5} />
+      {/* Ground colour is a real fill, not the near-black it was: it is the only
+          thing a hemisphere light gives a downward-facing face, and the underside
+          of a mold half is exactly what someone flips the view round to inspect. */}
+      <ambientLight intensity={0.28} />
+      <hemisphereLight intensity={0.55} color="#d6e3f5" groundColor="#5d6675" />
+      <directionalLight position={[300, 500, 400]} intensity={1.15} />
+      <directionalLight position={[-400, 250, -300]} intensity={0.45} />
+      <CameraLight intensity={0.55} />
       {/* Sized to the model and finite. An infinite grid keeps drawing cells out
           to the fade distance, and at a shallow angle those far cells alias into
           a shimmer that reads as the whole floor shaking whenever the camera
@@ -166,13 +201,17 @@ export function Viewer(props: ViewerProps) {
         cellColor="#2a3038"
         sectionSize={grid.section}
         sectionColor="#3a434f"
-        position={[0, -radius * 0.12, 0]}
+        position={[0, floorY - radius * 0.04, 0]}
         fadeDistance={grid.extent}
         fadeStrength={1.5}
+        // A floor, so it is only a floor from above. Left double-sided it draws
+        // across the model the moment you tip the camera under the parting plane
+        // - which is exactly when you are trying to look at the cavity.
+        side={THREE.FrontSide}
       />
       <Suspense fallback={null}>
         {props.url && (
-          <MoldScene key={`${props.url}-${key}`} {...props} url={props.url} setExtent={setRadius} />
+          <MoldScene key={`${props.url}-${key}`} {...props} url={props.url} onMeasured={setMeasured} />
         )}
       </Suspense>
       {/* Damping at 0.12 coasts for several seconds after a drag; the camera is
