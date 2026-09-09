@@ -123,6 +123,7 @@ jobs:
           DOMAIN: ${{ vars.TRAYMOLD_API_DOMAIN }}
           ORIGINS: ${{ vars.TRAYAPI_ALLOWED_ORIGINS }}
           TLS_EMAIL: ${{ vars.TRAYMOLD_TLS_EMAIL }}
+          PROXY: ${{ vars.TRAYMOLD_PROXY }}
         run: |
           missing=()
           [ -n "$HOST" ]     || missing+=("secret VPS_HOST")
@@ -130,9 +131,13 @@ jobs:
           [ -n "$KEY" ]      || missing+=("secret VPS_SSH_KEY")
           [ -n "$DOMAIN" ]   || missing+=("variable TRAYMOLD_API_DOMAIN")
           [ -n "$ORIGINS" ]  || missing+=("variable TRAYAPI_ALLOWED_ORIGINS")
-          # Caddy's global `email` option refuses an empty value, so an unset
-          # variable here would fail on the VPS rather than in this job.
-          [ -n "$TLS_EMAIL" ] || missing+=("variable TRAYMOLD_TLS_EMAIL")
+          # Only the bundled proxy needs an ACME address; with an external one
+          # the certificate is not ours to get. Caddy's global `email` option
+          # refuses an empty value, so an unset variable in caddy mode would fail
+          # on the VPS rather than in this job.
+          if [ "${PROXY:-caddy}" = "caddy" ]; then
+            [ -n "$TLS_EMAIL" ] || missing+=("variable TRAYMOLD_TLS_EMAIL")
+          fi
           if [ ${#missing[@]} -gt 0 ]; then
             printf 'Not configured yet. Missing:\n'; printf '  - %s\n' "${missing[@]}"
             printf '\nSee docs/deployment.md.\n'
@@ -168,6 +173,8 @@ jobs:
           WORKERS: ${{ vars.TRAYAPI_WORKERS }}
           MEMORY: ${{ vars.TRAYMOLD_MEMORY_LIMIT }}
           IMAGE: ${{ needs.build.outputs.image }}
+          PROXY: ${{ vars.TRAYMOLD_PROXY }}
+          API_BIND: ${{ vars.TRAYMOLD_API_BIND }}
         run: |
           # Pinned to this commit, not to :latest, so the VPS runs exactly what
           # this run built and a rollback is re-running an older workflow.
@@ -178,8 +185,19 @@ jobs:
           TRAYAPI_ALLOWED_ORIGINS=${ORIGINS}
           TRAYAPI_WORKERS=${WORKERS:-2}
           TRAYMOLD_MEMORY_LIMIT=${MEMORY:-3g}
+          TRAYMOLD_API_BIND=${API_BIND:-127.0.0.1:8000}
           EOF
           rm -f deploy/.env.local
+
+          # caddy: run the bundled proxy, which needs 80 and 443 to itself.
+          # external: run the API alone on TRAYMOLD_API_BIND and leave TLS to
+          # whatever already owns those ports on this host.
+          case "${PROXY:-caddy}" in
+            caddy)    echo "COMPOSE_PROFILE_ARGS=--profile caddy" >> "$GITHUB_ENV" ;;
+            external) echo "COMPOSE_PROFILE_ARGS=" >> "$GITHUB_ENV" ;;
+            *) echo "::error::TRAYMOLD_PROXY must be 'caddy' or 'external', not '$PROXY'"; exit 1 ;;
+          esac
+          echo "proxy mode: ${PROXY:-caddy}"
 
       - name: Ship the compose files
         env:
@@ -228,15 +246,19 @@ jobs:
           printf '%s' "$GHCR_TOKEN" \
             | $SSH "docker login ghcr.io -u ${GHCR_USER} --password-stdin"
 
+          # Passed on the command line rather than through the env file, so the
+          # active profile is visible in the log and does not depend on how
+          # compose resolves COMPOSE_PROFILES from --env-file.
           $SSH bash -s <<EOF
           set -euo pipefail
           cd '$DIR'
-          docker compose --env-file .env pull
-          docker compose --env-file .env up -d --remove-orphans --wait --wait-timeout 240
+          COMPOSE="docker compose --env-file .env $COMPOSE_PROFILE_ARGS"
+          \$COMPOSE pull
+          \$COMPOSE up -d --remove-orphans --wait --wait-timeout 240
           docker logout ghcr.io
           # Keep a week of images so a rollback does not have to pull again.
           docker image prune -af --filter 'until=168h'
-          docker compose --env-file .env ps
+          \$COMPOSE ps
           EOF
 
       - name: Smoke the live deployment

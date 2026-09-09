@@ -9,8 +9,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    ports:
-      - "${TRAYMOLD_API_PORT:-8000}:8000"
+    # The host binding comes from TRAYMOLD_API_BIND in .env.local, which opens it
+    # past loopback so you can hit the API directly when the proxy looks wrong.
 
   caddy:
     # An unresolvable hostname would send Caddy off to Let's Encrypt for a

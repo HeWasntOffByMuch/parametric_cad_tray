@@ -73,20 +73,130 @@ make deploy-check    # compose files parse; caddy validate on the Caddyfile
 
 ## 2. What runs on the VPS
 
+Two shapes, chosen by the `TRAYMOLD_PROXY` repository variable. Which one you
+want is decided by a single question: **does anything already own port 80 on
+this host?**
+
+### `caddy` (default) — nothing else is on 80/443
+
 ```
                     :80 / :443
                         |
                     [ caddy ]  automatic HTTPS, compression, body ceiling
                         |      flush_interval -1 on /api/jobs/*/events
-                 compose network
+                    127.0.0.1:8000
                         |
                     [ api ]    one uvicorn process
                         |      TRAYAPI_WORKERS CAD subprocesses inside it
                   /var/lib/traymold/artifacts   (named volume)
 ```
 
-The API publishes no port. Caddy is the only thing that can reach it, so it is
-never exposed without TLS and without the body ceiling in front of it.
+### `external` — something else already owns them
+
+```
+      :443  [ your nginx / Caddy / Traefik ]   your certificate, your config
+                        |
+                    127.0.0.1:8000
+                        |
+                    [ api ]
+                  /var/lib/traymold/artifacts
+```
+
+In both, the API binds `TRAYMOLD_API_BIND`, loopback by default, so it is never
+reachable from the internet without a proxy in front of it. The compose stack is
+the same file either way; `--profile caddy` is what starts the bundled proxy,
+and the deploy workflow passes it or not according to `TRAYMOLD_PROXY`.
+
+---
+
+## 2a. Behind a proxy you already run
+
+Set the `TRAYMOLD_PROXY` repository variable to `external`. `TRAYMOLD_SITE_ADDRESS`
+and `TRAYMOLD_TLS_EMAIL` stop mattering — the certificate is not ours to get.
+`TRAYAPI_ALLOWED_ORIGINS` still matters exactly as much, because CORS is enforced
+in the API, not the proxy.
+
+**One thing will not work by default, in every proxy:** job state streams as
+server-sent events, and a proxy that buffers still delivers every event — just
+all at once, when the connection closes. A 2.5 s build then shows no sign of
+life until it is over, which is the behaviour the endpoint exists to avoid.
+`deploy/smoke.sh` asserts an intermediate event arrives before the terminal one,
+so it catches this; the configs below prevent it.
+
+### nginx
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.example.com;
+    # ... your existing ssl_certificate / ssl_certificate_key ...
+
+    # A regex location beats a prefix one in nginx, so this wins for the event
+    # stream and the block below handles everything else.
+    location ~ ^/api/jobs/[^/]+/events$ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;      # without these three the stream is held
+        proxy_cache off;          # until the job finishes and the
+        gzip off;                 # connection closes
+        proxy_read_timeout 300s;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;  # an export is seconds of CAD, not milliseconds
+        client_max_body_size 1m;
+    }
+}
+```
+
+### An existing Caddy
+
+Add a site block; this is the bundled `deploy/Caddyfile` with the container
+address swapped for the host one.
+
+```caddyfile
+api.example.com {
+    @sse path_regexp sse ^/api/jobs/[^/]+/events$
+    @compressible not path_regexp sse ^/api/jobs/[^/]+/events$
+    encode @compressible zstd gzip
+
+    handle @sse {
+        reverse_proxy 127.0.0.1:8000 {
+            flush_interval -1
+        }
+    }
+    handle /api/* {
+        request_body {
+            max_size 256KB
+        }
+        reverse_proxy 127.0.0.1:8000
+    }
+}
+```
+
+### Traefik
+
+Traefik reaches containers over a docker network rather than the host, so also
+attach the `api` service to Traefik's network in a compose override, then route
+to it on port 8000. Traefik does not buffer responses by default, so SSE works
+without extra configuration — but verify it with `deploy/smoke.sh` rather than
+assuming.
+
+After wiring any of them up, prove it end to end from your machine:
+
+```bash
+ORIGIN=https://hewasntoffbymuch.github.io ./deploy/smoke.sh https://api.example.com
+```
+
+---
 
 **One uvicorn process, deliberately.** Job state, the SSE subscriber lists and
 the worker pool all live in the process. A second one would answer
@@ -116,11 +226,20 @@ takes out the container rather than the host.
    sudo usermod -aG docker deploy
    ```
 3. **DNS**: an `A` (and `AAAA`, if you have one) record for your API hostname
-   pointing at the VPS. Caddy gets a certificate for exactly that name on first
-   start, so it must resolve *before* the first deploy or the run will sit
-   waiting for a certificate it cannot obtain.
-4. **Ports 80 and 443 open.** Port 80 is not optional: the ACME HTTP challenge
-   uses it.
+   pointing at the VPS. In `caddy` mode Caddy gets a certificate for exactly that
+   name on first start, so it must resolve *before* the first deploy or the run
+   will sit waiting for a certificate it cannot obtain.
+4. **Ports 80 and 443 free, and open.** Port 80 is not optional in `caddy` mode:
+   the ACME HTTP challenge uses it.
+
+   Check before the first deploy — something else holding them is the most
+   common first-deploy failure, and it surfaces as
+   `Bind for 0.0.0.0:80 failed: port is already allocated`:
+   ```bash
+   sudo ss -lptn 'sport = :80 or sport = :443'
+   ```
+   If anything is listening, use `external` mode instead (§2a) rather than
+   trying to move it.
 5. Nothing else. The workflow creates `~/traymold` in the deploy user's home and
    puts the compose file, the Caddyfile and the `.env` there itself. The
    repository is never cloned on the VPS, and no source ships in the image beyond
@@ -173,12 +292,14 @@ long-lived registry credential is stored on the host.
 | name | example | used by |
 |---|---|---|
 | `TRAYMOLD_API_DOMAIN` | `api.example.com` | both workflows |
-| `TRAYMOLD_TLS_EMAIL` | `you@example.com` | api |
+| `TRAYMOLD_PROXY` | `caddy` (default) or `external` — see §2 | api |
+| `TRAYMOLD_TLS_EMAIL` | `you@example.com` — required in `caddy` mode, ignored in `external` | api |
 | `TRAYAPI_ALLOWED_ORIGINS` | `https://hewasntoffbymuch.github.io` | api |
 | `VPS_SSH_HOST_KEY` | output of `ssh-keyscan` | api |
 | `VPS_APP_DIR` | defaults to `~/traymold` in the deploy user's home; set it only for a path you have already chowned to that user | api |
 | `TRAYAPI_WORKERS` | defaults to `2` | api |
 | `TRAYMOLD_MEMORY_LIMIT` | defaults to `3g` | api |
+| `TRAYMOLD_API_BIND` | defaults to `127.0.0.1:8000`; change the port if something else on the host has it | api |
 | `TRAYMOLD_API_BASE_URL` | only if the API is not plain https on `TRAYMOLD_API_DOMAIN` | pages |
 
 The frontend build takes its API URL from `TRAYMOLD_API_BASE_URL` if set and
@@ -239,10 +360,14 @@ docker compose --env-file .env up -d --wait
 ## 6. Operating it
 
 ```bash
+# In caddy mode add --profile caddy to anything that starts or stops containers;
+# ps and logs do not need it.
+cd ~/traymold
 docker compose --env-file .env ps            # what is running
 docker compose --env-file .env logs -f api   # the API, uvicorn and job records
-docker compose --env-file .env logs -f caddy # requests, and ACME
-curl -s https://api.example.com/api/health | python3 -m json.tool
+docker compose --env-file .env logs -f caddy # requests, and ACME (caddy mode)
+curl -s http://127.0.0.1:8000/api/health | python3 -m json.tool   # on the VPS
+curl -s https://api.example.com/api/health | python3 -m json.tool # from outside
 ```
 
 `/api/health` reports the worker pool (configured, started, idle), the cache
@@ -265,6 +390,7 @@ docker volume rm traymold_artifacts
 | symptom | look at |
 |---|---|
 | the browser reports a CORS error | `TRAYAPI_ALLOWED_ORIGINS` — the exact origin, no trailing slash |
+| `Bind for 0.0.0.0:80 failed: port is already allocated` | another service owns 80/443; switch `TRAYMOLD_PROXY` to `external` and front the API with it (§2a) |
 | Caddy loops on ACME | DNS does not resolve to this host yet, or port 80 is closed |
 | a preview sits with no progress, then finishes all at once | the proxy is buffering: `flush_interval -1` on the SSE route |
 | `429` on ordinary use | `TRAYAPI_RATE_LIMIT_REQUESTS`; note that cache hits and deduplicated attaches consume no concurrency slot, so a low limit here is a real limit |

@@ -1,6 +1,8 @@
 # The production stack: the API behind Caddy, which terminates TLS.
 #
-#   docker compose --env-file .env up -d
+#   docker compose --env-file .env --profile caddy up -d     bundled TLS proxy
+#   docker compose --env-file .env up -d                     API only, behind
+#                                                            a proxy you run
 #
 # Everything tunable is an environment variable with a default; see .env.example.
 # For a local rehearsal add the local override, which builds the image from this
@@ -14,11 +16,13 @@ services:
   api:
     image: ${TRAYMOLD_IMAGE:-ghcr.io/hewasntoffbymuch/parametric_cad_tray/api:latest}
     restart: unless-stopped
-    # Not published. Caddy is the only thing that reaches it, over the compose
-    # network, so the API is never exposed without TLS and without a rate limit
-    # in front of it.
-    expose:
-      - "8000"
+    # Loopback by default, so the API is never reachable from the internet
+    # without a proxy in front of it. In the bundled-Caddy mode nothing outside
+    # the host needs this at all and it just makes the VPS debuggable
+    # (curl 127.0.0.1:8000/api/health); with an external proxy it is how that
+    # proxy reaches the API. Widen it only for a local run.
+    ports:
+      - "${TRAYMOLD_API_BIND:-127.0.0.1:8000}:8000"
     environment:
       # The browser app is on a different origin (GitHub Pages), so CORS is
       # load-bearing rather than decorative. No wildcard: name the origins.
@@ -54,6 +58,12 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   caddy:
+    # Optional. `--profile caddy` starts it; without the profile the API runs
+    # alone and something already on this host - nginx, an existing Caddy,
+    # Traefik - is expected to terminate TLS and forward to TRAYMOLD_API_BIND.
+    # See "Behind a proxy you already run" in docs/deployment.md; the SSE route
+    # needs explicit un-buffering there, whichever proxy it is.
+    profiles: ["caddy"]
     image: caddy:2.8-alpine
     restart: unless-stopped
     ports:
@@ -63,8 +73,8 @@ services:
     environment:
       # A hostname (api.example.com) gets automatic HTTPS; a bare port (:80)
       # serves plain HTTP, which is what the local rehearsal uses.
-      TRAYMOLD_SITE_ADDRESS: ${TRAYMOLD_SITE_ADDRESS:?a hostname for TLS, or :80 for a local run}
-      TRAYMOLD_TLS_EMAIL: ${TRAYMOLD_TLS_EMAIL:?an address for certificate expiry notices; unused when SITE_ADDRESS is a bare port}
+      TRAYMOLD_SITE_ADDRESS: ${TRAYMOLD_SITE_ADDRESS:-:80}
+      TRAYMOLD_TLS_EMAIL: ${TRAYMOLD_TLS_EMAIL:-nobody@example.invalid}
       TRAYMOLD_MAX_BODY: ${TRAYAPI_MAX_REQUEST_BYTES:-262144}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

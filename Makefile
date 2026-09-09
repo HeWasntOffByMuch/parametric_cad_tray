@@ -73,7 +73,9 @@ clean:
 # only differences are in deploy/.env.local: no TLS, unprivileged ports, and the
 # image built from this checkout rather than pulled from GHCR.
 #
-COMPOSE := docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.local.yml --env-file deploy/.env.local
+# --profile caddy: the local rehearsal always runs the bundled proxy, because
+# reproducing the production request path is the point of it.
+COMPOSE := docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.local.yml --env-file deploy/.env.local --profile caddy
 LOCAL_URL ?= http://localhost:8080
 
 ## Bring the containerised stack up and wait for it to be healthy.
