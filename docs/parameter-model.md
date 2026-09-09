@@ -4,6 +4,12 @@ Status: **design proposal, nothing implemented yet.**
 Companion to [`architecture.md`](./architecture.md), which contains the
 reverse-engineering evidence this schema is derived from.
 
+> **Revision note.** Rebuilt against the STEP B-rep. The earlier draft modelled the
+> corner as a conic (ρ = 0.5) and treated the forming gap as approximately uniform.
+> Both were wrong: the blend is an exact G2 quintic (§2.2) and the gap is an exact
+> geometric offset (§4). `corner_style`, the curvature ceiling in `E-BLEND-011`,
+> and the gap tolerance all change as a result.
+
 ---
 
 ## 1. Principles
@@ -34,28 +40,28 @@ reverse-engineering evidence this schema is derived from.
 
 | field | type | default | range | notes |
 |---|---|---|---|---|
-| `profile` | `ProfileUnion` | `obround` | — | discriminated on `kind`, §2.2 |
+| `profile` | `ProfileUnion` | `obround` | — | discriminated on `kind`; carries `corner_style`, §2.2 |
 | `datum` | `"inner" \| "outer"` | `inner` | — | which surface `length/width/depth` describe |
 | `length` | float mm | 175.0 | 20 … 400 | X |
 | `width` | float mm | 105.0 | 20 … 400 | Y |
 | `depth` | float mm | 25.0 | 3 … 120 | draw depth, Z |
 | `draft_angle` | float deg | 0.0 | 0 … 15 | 0 in the reference |
 | `draft_mode` | `"both" \| "plug_only" \| "cavity_only"` | `both` | — | `both` keeps the gap constant with height |
-| `floor_radius` | float mm | 5.0 | 0 … — | tray floor ↔ wall blend = the plug's top edge |
-| `floor_blend_style` | `BlendStyle` | `conic` | — | reference is conic ρ=0.5 |
+| `floor_radius` | float mm | 5.0 | 0 … — | blend **setback**, tray floor ↔ wall = the plug's top edge |
+| `floor_blend_style` | `CornerStyle` | `g2_quintic` | — | the reference uses the same template as the plan corners, setback 5.0 |
 
 ### 2.2 `ProfileUnion` — "choose a tray shape"
 
 ```python
 class ObroundProfile(BaseModel):            # the reference
     kind: Literal["obround"] = "obround"
+    corner_style: CornerStyle = "g2_quintic"
     # corner setback is locked to width/2 — deliberately not expressible
 
 class RoundedRectProfile(BaseModel):
     kind: Literal["rounded_rect"]
     corner_radius: float                     # CORNER SETBACK, see the note below
-    corner_style: Literal["circular","conic"] = "circular"
-    corner_rho: float = 0.5                  # conic only; 0.5 = parabola
+    corner_style: CornerStyle = "g2_quintic"
 
 class EllipseProfile(BaseModel):
     kind: Literal["ellipse"]
@@ -63,22 +69,43 @@ class EllipseProfile(BaseModel):
 class SuperellipseProfile(BaseModel):
     kind: Literal["superellipse"]
     exponent: float = 4.0                    # 2 = ellipse, →∞ = rectangle
+
+CornerStyle = Literal["g2_quintic", "circular"]
 ```
 
-**`corner_radius` means corner *setback*** — the distance from the sharp
-rectangle corner along each edge to the blend's tangent point. For
-`corner_style = "circular"` the setback equals the arc radius, so the name is
-honest. For `corner_style = "conic"` the curvature is **not** constant; the
-core reports the real numbers as derived values:
+**`corner_radius` means corner *setback*** — the distance from the sharp rectangle
+corner along each edge to the blend's tangent point. For `circular` the setback
+equals the arc radius. For `g2_quintic` the curvature varies, and the core reports
+the real numbers as derived values.
 
-| quantity | conic, setback `s` | circular, radius `s` |
+**`g2_quintic`** is the reference's own blend, recovered exactly from the STEP
+control points. It is a fixed, scale-invariant primitive — not a fit, not an
+approximation:
+
+```
+degree 5, non-rational
+knots  [0,0,0,0,0,0, ½,½, 1,1,1,1,1,1]     two quintic Bézier spans, C3 at the join
+poles  (−1,0) (−0.85,0) (−0.70,0) (−1/3,0.10) (−0.10,1/3) (0,0.70) (0,0.85) (0,1)
+       in a frame with the sharp corner at the origin, scaled by the setback s
+```
+
+| quantity | `g2_quintic` | `circular` |
 |---|---|---|
-| radius at the tangent points | `2s` | `s` |
-| radius at the 45° apex | `s/√2` ≈ `0.707 s` | `s` |
-| reference (`s = 52.5`) | 105 mm → **37.1 mm** → 105 mm | 52.5 mm |
+| curvature at the tangent points | **0** (true G2 with the straight edge) | `1/s` (G1 only) |
+| radius of curvature at the tangent points | ∞ | `s` |
+| **minimum** radius of curvature | **`0.72184 · s`** (at mid-blend) | `s` (constant) |
+| corner area removed | `0.163338 · s²` | `0.214602 · s²` |
+| reference, `s = 52.5` | R: ∞ → **37.90 mm** → ∞ | constant 52.5 mm |
 
-The `s/√2` figure is not cosmetic: it is the ceiling on every downstream 3D blend
-radius (§5, `E-BLEND-011`).
+The `0.72184 · s` figure is not cosmetic — it is the ceiling on every downstream 3D
+blend radius *and* on the forming gap (§5, `E-BLEND-011`, `E-GAP-025`). It is
+**tighter** than the circular intuition, so switching `corner_style` can turn a
+valid design invalid; the validator must be re-run on that switch.
+
+Verification at the reference's `s = 52.5`: the analytic template gives a plan area
+of 16 574.20 mm²; sectioning the STEP solid gives 16 574.19 mm². A circular-arc
+obround of the same bounding box gives 16 009.01 mm² — a 3.5 % difference, and up
+to 3.2 mm of positional deviation at mid-blend.
 
 ### 2.3 `leather` — the material being formed
 
@@ -109,10 +136,10 @@ Reference: `3.0 = 0.0 + 3.0 × (1 − 0.0)`.
 | `flange_width` | float mm | 30.0 | 8 … 120 | measured from the **plug**; the female's 27 mm is derived |
 | `base_plate_thickness` | float mm | 15.0 | 3 … 60 | male |
 | `cavity_plate_thickness` | float mm | 25.0 | 3 … 150 | female; `== depth` in the reference (flush top) |
-| `plug_root_fillet` | float mm | 1.2 | 0 … — | **circular** in the reference, unlike the other blends |
+| `plug_root_fillet` | float mm | 1.2 | 0 … — | **circular** rolling-ball fillet in the reference — cylindrical faces on the straights, exact circular sweeps at the corners. Deliberately a different vocabulary from the other blends. |
 | `cavity_entry_radius_top` | float mm | 3.0 | 0 … — | the blended rim in the reference |
 | `cavity_entry_radius_bottom` | float mm | 0.0 | 0 … — | **sharp** in the reference; see [`architecture.md` §2.5](./architecture.md#25-the-relationships-that-actually-matter) |
-| `entry_blend_style` | `BlendStyle` | `conic` | — | |
+| `entry_blend_style` | `CornerStyle` | `g2_quintic` | — | the reference uses the same template as the plan corners, setback 3.0 |
 | `flange_relief_depth` | float mm | 0.0 | 0 … — | recess for the leather flange; the reference has none |
 | `plate_edge_chamfer` | float mm | 0.0 | 0 … 5 | print-friendly break; 0 in the reference |
 | `parts` | `{male: bool, female: bool}` | both true | — | which halves to build |
@@ -196,11 +223,11 @@ not collide (`E-FEAT-053`).
   "schema_version": "1.0.0",
   "meta": { "name": "ref-4x7-wetmold" },
   "tray": {
-    "profile": { "kind": "obround" },
+    "profile": { "kind": "obround", "corner_style": "g2_quintic" },
     "datum": "inner",
     "length": 175.0, "width": 105.0, "depth": 25.0,
     "draft_angle": 0.0, "draft_mode": "both",
-    "floor_radius": 5.0, "floor_blend_style": { "kind": "conic", "rho": 0.5 }
+    "floor_radius": 5.0, "floor_blend_style": "g2_quintic"
   },
   "leather": { "thickness": 3.0, "compression": 0.0 },
   "fit": { "clearance": 0.0, "gap_override": null },
@@ -211,7 +238,7 @@ not collide (`E-FEAT-053`).
     "plug_root_fillet": 1.2,
     "cavity_entry_radius_top": 3.0,
     "cavity_entry_radius_bottom": 0.0,
-    "entry_blend_style": { "kind": "conic", "rho": 0.5 },
+    "entry_blend_style": "g2_quintic",
     "flange_relief_depth": 0.0,
     "plate_edge_chamfer": 0.0,
     "parts": { "male": true, "female": true }
@@ -236,8 +263,18 @@ not collide (`E-FEAT-053`).
 }
 ```
 
-Note `plug_root_fillet` uses a circular blend while the floor and entry blends
-are conic — that asymmetry is real, measured, and must survive into the schema.
+Note `plug_root_fillet` is a **circular** rolling-ball fillet while the plan
+corners, the floor blend and the entry blend all use the **same G2 quintic
+template** at three different setbacks (52.5 / 5.0 / 3.0). That asymmetry is not an
+accident of export — it is visible in the STEP face types (cylinders and
+rational-quadratic sweeps for the root fillet; non-rational deg-5 surfaces
+everywhere else) and must survive into the schema.
+
+This preset is the Stage 2 fidelity target and should reproduce
+`male_tray_mold.step` and `female_tray_mold.step` to within 0.05 mm. The clamp
+holes and pry notches exist only in the STL revision, so with
+`features.clamp_holes.enabled = false` and `features.pry_notches.enabled = false`
+this preset must instead match the STEP female exactly (517.830 cm³).
 
 ---
 
@@ -249,25 +286,28 @@ Computed in `derive.py`, returned by `POST /validate`, displayed by the UI,
 | derived | formula | reference |
 |---|---|---|
 | `gap` | `clearance + thickness × (1 − compression)` | 3.000 |
-| `cavity_length` | `length + 2·gap` | 181.0 |
-| `cavity_width` | `width + 2·gap` | 111.0 |
-| `cavity_corner_setback` | `corner_setback + gap` | 55.5 |
+| `cavity_length` | bbox of the **true 3D offset** of the plan profile by `gap` | 181.0032 |
+| `cavity_width` | bbox of the same offset | 111.0032 |
+| `cavity_corner_setback` | nominal `corner_setback + gap`; the true offset differs from the template at that setback by up to 0.18 mm | 55.5 (nominal) |
 | `plate_length` | `length + 2·flange_width` | 235.0 |
 | `plate_width` | `width + 2·flange_width` | 165.0 |
 | `female_flange_width` | `flange_width − gap` | 27.0 |
 | `closed_height` | `base_plate_thickness + cavity_plate_thickness` | 40.0 |
 | `plug_top_length/width` | `length − 2·floor_radius − 2·depth·tan(draft)` | 165 × 95 |
-| `corner_radius_min/max` | conic: `s/√2`, `2s`; circular: `s`, `s` | 37.1 / 105.0 |
-| `gap_actual_min/max` | measured plug↔cavity distance (§6) | 3.00 / ≈3.18 |
-| `volume_male`, `volume_female` | solid volume | 994.2 / 512.4 cm³ |
+| `corner_radius_min/max` | `g2_quintic`: `0.72184·s`, ∞; `circular`: `s`, `s` | 37.90 / ∞ |
+| `gap_actual_min/max` | measured plug↔cavity distance (§6) | 3.000 / 3.000 |
+| `volume_male`, `volume_female` | solid volume | 993.80 / 517.83 cm³ (STEP, no features); 512.68 cm³ with features |
 | `filament_estimate` | volume × infill model | — |
 | `bed_fit` | `plate_* ≤ bed_*` per part | ok |
 | `min_wall_actual` | min over all feature-to-edge/cavity distances | — |
 | `vertical_wall_height` | `depth − floor_radius − plug_root_fillet` | 18.8 |
 
-`gap_actual_max ≠ gap` is expected, not a bug: the cavity is generated
-parametrically rather than geometrically offset, exactly as the original does —
-see [`architecture.md` §7.5](./architecture.md#75-the-gap-is-not-exactly-uniform).
+`gap_actual_min` and `gap_actual_max` must both equal `gap`: the reference achieves
+3.000 mm uniformly (measured 2.998–3.003 over 3600 sampled points, i.e. sampling
+noise). The cavity is a **true geometric offset** of the plug, so this is a tight
+invariant, not a loose one — see
+[`architecture.md` §7.1](./architecture.md#71-the-cavity-must-be-a-true-offset-new-1-risk).
+If a build reports a spread wider than 0.01 mm, the offset silently failed.
 
 ---
 
@@ -283,7 +323,8 @@ fit.clearance     ┘         ├─► female_flange_width ──► feature pl
 
 tray.length ─┬─► corner_radius ceiling (E-SHAPE-001)
 tray.width  ─┤       │
-             │       └─► corner_radius_min = s/√2 ──► blend ceiling (E-BLEND-011)
+             │       └─► corner_radius_min = 0.72184·s ─► blend + offset ceiling
+             │                                             (E-BLEND-011, E-GAP-025)
              ├─► plate_length / plate_width ──► bed_fit, feature inset limits
              └─► plug_top_* (with depth, draft, floor_radius)  (E-DRAFT-031)
 
@@ -311,7 +352,7 @@ and the numbers involved — so the UI can render it against the right input.
 | `W-SHAPE-003` | warn | `corner_radius < 3 × leather.thickness` | leather will not take that corner cleanly |
 | `W-SHAPE-005` | warn | `corner_radius == 0` | sharp plan corners tear wet leather |
 | `E-BLEND-010` | error | `floor_radius > depth / 2` | no room in Z |
-| `E-BLEND-011` | error | `floor_radius ≥ corner_radius_min` (`s/√2` conic, `s` circular) | blend exceeds local curvature → OCC failure or self-intersection, **not** a clamped result |
+| `E-BLEND-011` | error | `floor_radius ≥ corner_radius_min` (`0.72184·s` for `g2_quintic`, `s` for `circular`) | blend exceeds local curvature → OCC failure or self-intersection, **not** a clamped result. The `g2_quintic` ceiling is ~28 % tighter than `circular`, so switching style can invalidate a working design — re-validate on that switch. |
 | `E-BLEND-012` | error | `min(L,W) − 2 × floor_radius ≤ 0` | the plug's top face degenerates |
 | `E-BLEND-013` | error | `entry_top + entry_bottom > cavity_plate_thickness` | the two rim blends meet |
 | `E-BLEND-014` | error | `plug_root_fillet > min(flange_width, base_plate_thickness)` | |
@@ -320,6 +361,8 @@ and the numbers involved — so the UI can render it against the right input.
 | `W-GAP-021` | warn | `gap < 0.4` | below FDM resolution; the halves will fuse |
 | `W-GAP-022` | warn | `gap > 1.5 × leather.thickness` | loose forming, poor definition |
 | `E-GAP-023` | error | `gap ≥ min(L,W)/2` | nonsensical |
+| `E-GAP-025` | error | `gap ≥ corner_radius_min` | a 2D offset larger than the tightest concave curvature self-intersects |
+| `E-GAP-026` | error | the built offset's measured distance to the source deviates from `gap` by > 0.01 mm | OCC offset silently degraded; refuse rather than ship a wrong gap |
 | `E-GAP-024` | error | `draft_mode ≠ "both"` and `depth × tan(draft) ≥ gap` | the drafted wall closes the gap before full depth |
 | `E-DRAFT-030` | error | `draft_angle` outside `[0, 15]` | |
 | `E-DRAFT-031` | error | `min(L,W) − 2·depth·tan(draft) ≤ 2 × floor_radius` | the plug tapers to nothing |
@@ -363,10 +406,13 @@ arithmetically *before* the kernel is invoked. A `try/except` around
 The schema is only worth as much as the checks behind it. Two of the derived
 values above exist specifically to be tested:
 
-- `gap_actual_min/max` is measured by slicing the built solids at several
-  heights and computing the plug↔cavity distance — the same probe code used to
-  reverse-engineer the reference. It must equal `gap` within 0.05 mm on the
-  straight runs for every valid parameter set.
+- `gap_actual_min/max` is measured with `BRepExtrema_DistShapeShape` between the
+  built plug and cavity walls — the same probe used to reverse-engineer the
+  reference. It must equal `gap` within **0.01 mm everywhere**, not just on the
+  straight runs; the reference meets that, so anything looser is hiding a bug.
+- The `g2_quintic` primitive gets its own unit tests independent of any mold:
+  the knot vector and 8 poles, zero curvature at both endpoints, minimum radius
+  of curvature `0.72184 · s`, and removed corner area `0.163338 · s²`.
 - `min_wall_actual` is measured from the built solid, not from the input
   arithmetic, so a feature-placement bug cannot hide behind a passing rule.
 
