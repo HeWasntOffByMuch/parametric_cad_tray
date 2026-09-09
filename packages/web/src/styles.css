@@ -1,14 +1,48 @@
+/*
+ * One stylesheet, no framework.
+ *
+ * Three ideas carry the whole interface:
+ *   - three surface levels (app / panel / control) instead of borders everywhere
+ *   - one spacing scale, so nothing is 7px because it happened to look right
+ *   - contrast as hierarchy: a label is brighter than its unit, which is
+ *     brighter than its helper text, and none of them need a box drawn round it
+ */
 :root {
-  --bg: #0f1216;
-  --panel: #171b21;
-  --panel-2: #1e232b;
-  --line: #2a3039;
-  --text: #e6e9ee;
-  --muted: #98a2b0;
-  --accent: #5aa9ff;
+  /* surfaces, darkest first */
+  --bg: #0d1014;
+  --surface: #14181e;
+  --surface-2: #1b2128;
+  --surface-3: #222a33;
+
+  /* lines: soft separates within a panel, line separates panels */
+  --line: #262e38;
+  --line-soft: #1e242c;
+
+  /* text, brightest first. Each step down is a step down in importance. */
+  --text: #e9ecf1;
+  --text-2: #b9c2cf;
+  --muted: #8590a0;
+  --faint: #5c6675;
+
+  --accent: #4c9aff;
+  --accent-ink: #04121f;
+  --accent-soft: #16304d;
   --ok: #48c78e;
-  --warn: #f2b544;
+  --warn: #f0b445;
   --bad: #f2645a;
+
+  /* 4 / 8 / 12 / 16 / 24 / 32 */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s6: 24px;
+  --s8: 32px;
+
+  --control-h: 30px;
+  --radius: 6px;
+  --radius-sm: 5px;
+
   color-scheme: dark;
 }
 
@@ -19,141 +53,492 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers that change in place should not make the layout twitch. */
+input[type="number"], .tabular, .derived-row dd, .artifact-size, .version {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .app {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr) 320px;
+  grid-template-columns: 336px minmax(0, 1fr) 316px;
   grid-template-rows: auto 1fr;
   grid-template-areas: "header header header" "params stage info";
   height: 100vh;
 }
 
+/* -- header -------------------------------------------------------------- */
 header {
   grid-area: header;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: var(--panel);
+  gap: var(--s3);
+  height: 54px;
+  padding: 0 var(--s4);
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
-header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: 0.01em; }
+.brand { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+header h1 {
+  font-size: 15px;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.brand .kicker {
+  color: var(--faint);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.header-rule {
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  flex: none;
+}
 .spacer { flex: 1; }
+header .preset { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+header .preset .label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+header select { width: auto; min-width: 168px; }
+header .experimental { margin: 0; color: var(--text-2); font-size: 12px; white-space: nowrap; }
 
+/* -- panels -------------------------------------------------------------- */
 .params, .info {
   overflow-y: auto;
-  background: var(--panel);
-  padding: 12px;
+  background: var(--surface);
+  padding: var(--s4) var(--s4) var(--s8);
 }
 .params { grid-area: params; border-right: 1px solid var(--line); }
 .info { grid-area: info; border-left: 1px solid var(--line); }
-.stage { grid-area: stage; display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+.stage { grid-area: stage; position: relative; min-width: 0; display: grid; }
 
 /* -- form ---------------------------------------------------------------- */
-.group { border-bottom: 1px solid var(--line); }
-.group h2 { margin: 0; font-size: 12px; }
+/* Groups are separated by space, not by rules. One hairline marks the start of
+   each new group after the first, which is enough to read as a break. */
+.group + .group { margin-top: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--line-soft); }
+.group h2 { margin: 0; }
 .group h2 button {
-  width: 100%; text-align: left; background: none; border: 0; color: var(--text);
-  padding: 9px 4px; font: inherit; font-weight: 600; cursor: pointer;
-  text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: var(--text);
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 11px;
+  min-height: 20px;
 }
-.chevron { color: var(--muted); }
-.group-body { padding: 0 4px 12px; }
+.group h2 button:hover .chevron { color: var(--text-2); }
+.chevron { color: var(--faint); font-size: 9px; width: 9px; flex: none; }
+.group-body { padding-top: var(--s2); }
+/* The group's own description: present, but never competing with a label. */
+.group-body > .hint:first-child { margin: 0 0 var(--s3); color: var(--muted); }
 
-.field { display: block; margin: 8px 0; }
-.field .label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
-.field .unit { color: #6b7686; font-style: normal; margin-left: 4px; }
-.field .control { display: flex; align-items: center; gap: 8px; }
-.field input[type="number"], .field input[type="text"], .field select, select {
-  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
-  border-radius: 5px; padding: 5px 7px; font: inherit; width: 100%; min-width: 0;
+.field { display: block; margin: 0 0 var(--s4); }
+.field:last-child { margin-bottom: 0; }
+
+/* A parameter reads as one control: name on the left, value on the right,
+   slider spanning underneath. */
+.field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  min-height: var(--control-h);
 }
-.field input[type="number"] { max-width: 110px; }
-.field .slider { flex: 1; accent-color: var(--accent); }
-.field.checkbox, label.checkbox { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
-.field.checkbox input, label.checkbox input { width: auto; }
+.field .label {
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field .unit { color: var(--faint); font-style: normal; font-size: 11px; }
+
+.value-box {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  flex: none;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding-right: var(--s2);
+  height: var(--control-h);
+}
+.value-box:focus-within { border-color: var(--accent); }
+.value-box input[type="number"] {
+  width: 62px;
+  background: none;
+  border: 0;
+  padding: 0 var(--s2);
+  height: 100%;
+  text-align: right;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.value-box input:focus { outline: none; }
+.value-box .unit { flex: none; }
+.field.disabled .value-box, .value-box:has(input:disabled) { opacity: 0.5; }
+
+.field input[type="text"], .field select, select {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--s2);
+  height: var(--control-h);
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  min-width: 0;
+}
+select:hover:not(:disabled), .field input[type="text"]:hover:not(:disabled) { border-color: var(--surface-3); }
+select:disabled, input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.slider {
+  width: 100%;
+  margin: var(--s1) 0 0;
+  accent-color: var(--accent);
+  height: 18px;
+  cursor: pointer;
+}
+.slider:disabled { cursor: not-allowed; }
+
+.field.checkbox, label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  min-height: 22px;
+  color: var(--text-2);
+}
+.field.checkbox input, label.checkbox input { width: auto; accent-color: var(--accent); flex: none; }
+.field.checkbox .label { font-size: 12.5px; }
+
+/* A nested object is a sub-group, marked by an indent rather than a box. */
 fieldset.object {
-  border: 1px solid var(--line); border-radius: 6px; margin: 10px 0; padding: 4px 10px 10px;
+  border: 0;
+  border-left: 1px solid var(--line-soft);
+  border-radius: 0;
+  margin: var(--s3) 0;
+  padding: 0 0 0 var(--s3);
+  min-width: 0;
 }
-fieldset.object legend { color: var(--muted); font-size: 11px; padding: 0 4px; }
-.gated { opacity: 0.72; }
+fieldset.object legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0;
+  margin-bottom: var(--s1);
+  letter-spacing: 0.03em;
+}
+.gated { opacity: 0.55; }
 
-.hint { color: var(--muted); font-size: 11px; margin: 4px 0; }
+/* Helper copy is deliberately quiet: it explains, it does not label. */
+.hint { color: var(--muted); font-size: 11px; line-height: 1.45; margin: var(--s1) 0 0; }
 .hint.warn { color: var(--warn); }
-.diag { font-size: 11px; margin: 4px 0; }
-.diag .code { font-family: ui-monospace, monospace; opacity: 0.85; margin-right: 4px; }
+.diag { font-size: 11px; margin: var(--s1) 0 0; line-height: 1.45; }
+.diag .code { font-family: ui-monospace, monospace; opacity: 0.75; margin-right: var(--s1); }
 .diag.error { color: var(--bad); }
 .diag.warning { color: var(--warn); }
 .diag.info { color: var(--muted); }
-.diagnostics { border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 12px; }
+.diagnostics {
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--bad);
+  border-radius: var(--radius);
+  padding: var(--s2) var(--s3);
+  margin-bottom: var(--s4);
+  background: var(--surface-2);
+}
 
 /* -- stage --------------------------------------------------------------- */
-.preview-status, .viewer-controls {
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-  background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap;
+.viewport {
+  position: relative;
+  min-height: 0;
+  background:
+    radial-gradient(120% 90% at 50% 0%, #191f27 0%, #0e1116 70%);
 }
-.viewer-controls { border-bottom: 0; border-top: 1px solid var(--line); }
-.pill { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
-.pill.idle { background: #2a313b; color: var(--muted); }
-.pill.busy { background: #24384f; color: var(--accent); }
-.pill.ok   { background: #1e3b30; color: var(--ok); }
-.pill.warn { background: #40351b; color: var(--warn); }
-.pill.bad  { background: #40231f; color: var(--bad); }
-.detail { color: var(--muted); font-size: 11px; }
-
-.viewport { position: relative; min-height: 0; background: #12151a; }
 .viewport canvas { display: block; width: 100% !important; height: 100% !important; }
 .viewport.stale canvas { opacity: 0.55; transition: opacity 160ms ease; }
+
+/* Status and controls float over the viewport so the model owns the space. */
+.preview-status, .viewer-controls {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  background: rgba(17, 21, 26, 0.9);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.preview-status {
+  border-color: var(--line-soft);
+  top: var(--s3);
+  left: var(--s3);
+  right: var(--s3);
+  padding: var(--s2) var(--s2) var(--s2) var(--s3);
+  min-height: 42px;
+}
+.viewer-controls {
+  bottom: var(--s3);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--s2);
+  gap: var(--s3);
+  width: max-content;
+  max-width: calc(100% - var(--s6));
+  /* One row. Wrapping put Reset view on a line of its own and turned a toolbar
+     into a stack; below the width where that no longer fits it scrolls. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.viewer-controls::-webkit-scrollbar { display: none; }
+.viewer-controls > * { flex: none; }
+
+/* A dot plus a sentence, not a coloured chip shouting a state name. */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--faint);
+}
+.status-dot.ok { background: var(--ok); }
+.status-dot.busy { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.status-dot.warn { background: var(--warn); }
+.status-dot.bad { background: var(--bad); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.status-label { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.detail {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control-group { display: flex; align-items: center; gap: var(--s2); }
+.control-group > .caption {
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
 .placeholder {
-  height: 100%; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--s2);
+  color: var(--muted);
+  padding: var(--s6);
+  text-align: center;
 }
+.placeholder .headline { color: var(--text-2); font-size: 14px; }
+.placeholder .sub { font-size: 12px; max-width: 34ch; }
+
 .stale-badge {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-  background: #40351b; color: var(--warn); padding: 4px 12px; border-radius: 999px;
-  font-size: 11px; font-weight: 600;
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  background: rgba(17, 21, 26, 0.9);
+  border: 1px solid #4a3c1c;
+  color: var(--warn);
+  padding: var(--s1) var(--s3);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
 }
 
+/* -- buttons ------------------------------------------------------------- */
 button {
-  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
-  border-radius: 5px; padding: 5px 11px; font: inherit; cursor: pointer;
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--s3);
+  height: var(--control-h);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
 }
-button:hover:not(:disabled) { border-color: #3d4757; }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
+button:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) { background: #62a8ff; border-color: #62a8ff; color: var(--accent-ink); }
+/* The call to action only looks like one when there is something to do. */
+button.primary:disabled { background: var(--surface-2); border-color: var(--line); color: var(--muted); opacity: 0.65; }
+button.block { width: 100%; }
+button.lg { height: 36px; font-size: 13px; }
+
 .segmented { display: flex; }
-.segmented button { border-radius: 0; text-transform: capitalize; }
-.segmented button:first-child { border-radius: 5px 0 0 5px; }
-.segmented button:last-child { border-radius: 0 5px 5px 0; }
-.segmented button.active { background: var(--accent); border-color: var(--accent); color: #06121f; }
-
-/* -- info ---------------------------------------------------------------- */
-.info h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 16px 0 6px; }
-.derived dl { margin: 0; }
-.derived-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px solid #1f242c; }
-.derived-row dt { color: var(--muted); font-size: 11px; }
-.derived-row dd { margin: 0; font-family: ui-monospace, monospace; font-size: 12px; }
-.export .row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 8px; flex-wrap: wrap; }
-.export fieldset.formats { border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px 6px; margin: 0; }
-.export fieldset.formats legend { color: var(--muted); font-size: 11px; }
-.artifacts { list-style: none; padding: 0; margin: 10px 0 0; }
-.artifacts li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
-.artifacts a { color: var(--accent); }
-.version { color: #5d6775; font-size: 10px; margin-top: 18px; font-family: ui-monospace, monospace; }
-.share-note {
-  grid-column: 1 / -1; margin: 0; padding: 6px 16px; background: #1e3b30; color: var(--ok);
-  font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all;
+.segmented button {
+  border-radius: 0;
+  text-transform: capitalize;
+  padding: 0 var(--s3);
+  color: var(--muted);
 }
-.booting, .boot-error { display: grid; place-items: center; height: 100vh; text-align: center; padding: 24px; }
-.boot-error h1 { font-size: 18px; }
-.boot-error code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+.segmented button + button { border-left: 0; }
+.segmented button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.segmented button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.segmented button.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: #cfe2ff;
+  font-weight: 600;
+}
+.segmented button.active + button { border-left: 0; }
 
-@media (max-width: 1100px) {
+/* -- info panel ---------------------------------------------------------- */
+.info h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin: 0 0 var(--s3);
+  font-weight: 600;
+}
+.export { margin-bottom: var(--s6); }
+.export .row { display: grid; gap: var(--s3); margin-bottom: var(--s3); }
+.export .row .label,
+.export fieldset.formats legend {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: var(--s1);
+  padding: 0;
+}
+.export fieldset.formats { border: 0; padding: 0; margin: 0; }
+.export .format-options { display: flex; gap: var(--s4); }
+.export .format-options .checkbox { margin: 0; }
+
+/* Downloads read as rows you click, not as a list of filenames. */
+.artifacts { list-style: none; padding: 0; margin: var(--s4) 0 0; display: grid; gap: var(--s1); }
+.artifacts li { display: block; }
+.artifacts a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  text-decoration: none;
+  font-size: 12.5px;
+}
+.artifacts a:hover { border-color: var(--accent); color: var(--text); background: var(--surface-3); }
+.artifact-size { color: var(--faint); font-size: 11px; flex: none; }
+
+/* Derived is reference material: available, subordinate to Export. */
+.details-block { border-top: 1px solid var(--line-soft); padding-top: var(--s4); }
+.details-block > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+}
+.details-block > summary::-webkit-details-marker { display: none; }
+.details-block > summary:hover { color: var(--text-2); }
+.details-block > summary .chevron { font-size: 9px; }
+.details-block[open] > summary { margin-bottom: var(--s3); }
+
+.derived dl { margin: 0; }
+.derived-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s1) 0;
+}
+.derived-row + .derived-row { border-top: 1px solid var(--line-soft); }
+.derived-row dt { color: var(--muted); font-size: 11.5px; }
+.derived-row dd { margin: 0; color: var(--text-2); font-size: 11.5px; flex: none; }
+
+.version {
+  color: var(--faint);
+  font-size: 10px;
+  margin: var(--s6) 0 0;
+  font-family: ui-monospace, monospace;
+  opacity: 0.8;
+}
+
+.share-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--s2) var(--s4);
+  background: var(--accent-soft);
+  color: #cfe2ff;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  border-bottom: 1px solid var(--line);
+}
+
+.booting, .boot-error { display: grid; place-items: center; height: 100vh; text-align: center; padding: var(--s6); }
+.boot-error h1 { font-size: 18px; }
+.boot-error code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+/* -- narrower laptops ----------------------------------------------------- */
+@media (max-width: 1400px) {
+  .app { grid-template-columns: 308px minmax(0, 1fr) 288px; }
+}
+
+/* Below this the three columns stop fitting: the viewer keeps the width and
+   the panels stack under it, Export ahead of the reference figures. */
+@media (max-width: 1200px) {
   .app {
     grid-template-columns: 1fr;
     grid-template-areas: "header" "stage" "params" "info";
-    grid-template-rows: auto 60vh auto auto;
+    grid-template-rows: auto 58vh auto auto;
     height: auto;
   }
   .params, .info { border: 0; border-top: 1px solid var(--line); overflow: visible; }
+  header { flex-wrap: wrap; height: auto; padding: var(--s2) var(--s3); gap: var(--s2); }
+  header .preset { flex: 1 1 auto; }
+  .header-rule { display: none; }
 }

@@ -77,46 +77,49 @@ export function NumberWidget({ field, value, hint, context, diagnostics, disable
     onCommit()
   }
 
+  // Name on the left, value on the right, slider spanning underneath: the three
+  // read as one control rather than as a label followed by two inputs. The unit
+  // sits with the number it belongs to, quieter than either.
   return (
-    <div className="field" data-field={field.path}>
-      <span className="label" aria-hidden="true">
-        {field.title}
-        {hint?.unit && <em className="unit">{hint.unit}</em>}
-      </span>
-      <div className="control">
-        <input
-          type="number"
-          inputMode="decimal"
-          aria-label={accessibleName(field, context)}
-          value={shown}
-          min={min}
-          max={max}
-          step={step}
-          disabled={disabled}
-          onChange={(e) => push(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => e.key === 'Enter' && commit()}
-        />
-        {slider && (
+    <div className={`field number${disabled ? ' disabled' : ''}`} data-field={field.path}>
+      <div className="field-head">
+        <span className="label" aria-hidden="true">{field.title}</span>
+        <span className="value-box">
           <input
-            type="range"
-            aria-label={`${accessibleName(field, context)} slider`}
-            className="slider"
-            min={slider[0]}
-            max={slider[1]}
+            type="number"
+            inputMode="decimal"
+            aria-label={accessibleName(field, context)}
+            value={shown}
+            min={min}
+            max={max}
             step={step}
             disabled={disabled}
-            value={Number(value ?? slider[0])}
-            onChange={(e) => {
-              setDraft(null)
-              onChange(Number(e.target.value))
-            }}
-            onPointerUp={commit}
-            onKeyUp={commit}
-            onTouchEnd={commit}
+            onChange={(e) => push(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => e.key === 'Enter' && commit()}
           />
-        )}
+          {hint?.unit && <em className="unit">{hint.unit}</em>}
+        </span>
       </div>
+      {slider && (
+        <input
+          type="range"
+          aria-label={`${accessibleName(field, context)} slider`}
+          className="slider"
+          min={slider[0]}
+          max={slider[1]}
+          step={step}
+          disabled={disabled}
+          value={Number(value ?? slider[0])}
+          onChange={(e) => {
+            setDraft(null)
+            onChange(Number(e.target.value))
+          }}
+          onPointerUp={commit}
+          onKeyUp={commit}
+          onTouchEnd={commit}
+        />
+      )}
       <FieldMessages diagnostics={diagnostics} hint={hint} />
     </div>
   )

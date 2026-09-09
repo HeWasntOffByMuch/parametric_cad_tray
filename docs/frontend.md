@@ -38,6 +38,26 @@ dev server proxies. A static build is therefore repointable without rebuilding.
 
 ---
 
+## 1a. Visual language
+
+Three surface levels (app, panel, control), one 4/8/12/16/24 spacing scale, and
+contrast as the hierarchy: a label is brighter than its unit, which is brighter
+than its helper text. Groups are separated by space and one hairline rather than
+by putting each in a card, so the sidebar stays dense without reading as a stack
+of boxes.
+
+A parameter is one control, not three: name on the left, value and unit on the
+right, slider spanning underneath. The number input remains authoritative and
+keeps its accessible name, so the layout change is presentational only.
+
+The viewport owns the middle column. Status and view controls float over it
+instead of banding it above and below, and the accent colour is spent on exactly
+one thing at a time - Update preview only while the preview is stale, Export the
+rest of the time. Derived figures sit below Export in a collapsible block: they
+are how you check a design, not why you came.
+
+---
+
 ## 2. Form strategy
 
 The parameter schema is not restated in TypeScript. `form/schema.ts` walks the

@@ -113,7 +113,6 @@ function VariantField({ field, exclude, context, ...props }: Props & { field: Fi
     <fieldset className="object variant" data-field={field.path}>
       <legend>{field.title}</legend>
       <div className="field">
-        <span className="label" aria-hidden="true">Type</span>
         <select
           aria-label={`${context ? `${context} ` : ''}${field.title} type`}
           value={key}

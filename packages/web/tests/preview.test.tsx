@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../src/App'
@@ -330,9 +330,17 @@ describe('export', () => {
 
     expect(backend.previewCalls).toHaveLength(previewCount)
     const links = screen.getByTestId('export-artifacts')
-    expect(links).toHaveTextContent('male.step')
-    expect(links).toHaveTextContent('male.stl')
-    expect(links).toHaveTextContent('bundle.zip')
+    // A download row is named for what it is, not for the file it happens to be
+    // called - but the filename still has to survive onto the link, because that
+    // is what lands in the user's downloads folder.
+    expect(links).toHaveTextContent('Male STEP')
+    expect(links).toHaveTextContent('Male STL')
+    expect(links).toHaveTextContent('Complete bundle')
+    expect(within(links).getByText('Male STEP').closest('a')).toHaveAttribute('download', 'male.step')
+    expect(within(links).getByText('Male STL').closest('a')).toHaveAttribute('download', 'male.stl')
+    expect(within(links).getByText('Complete bundle').closest('a')).toHaveAttribute('download', 'tray-mold.zip')
+    // Sizes are human-readable rather than raw kilobytes.
+    expect(links).toHaveTextContent('409 kB')
     expect(status()).toBe('clean')
   })
 

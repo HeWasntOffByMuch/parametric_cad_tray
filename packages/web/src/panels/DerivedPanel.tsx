@@ -32,7 +32,7 @@ export function DerivedPanel({
         ))}
         {Object.entries(volumes).map(([key, value]) => (
           <div key={key} className="derived-row">
-            <dt>{key.replace('_cm3', '')} volume</dt>
+            <dt>{`${key.replace('_cm3', '').replace(/^./, (c) => c.toUpperCase())} volume`}</dt>
             <dd data-testid={`derived-${key}`}>{value.toFixed(1)} cm³</dd>
           </div>
         ))}

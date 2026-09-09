@@ -6,6 +6,18 @@ import type { Job, Json } from '../api/types'
 
 type Parts = 'both' | 'male' | 'female'
 
+/** "male.stl" is a filename; "Male STL" is what someone is downloading. The
+ *  artifact already carries both facts, so neither is parsed out of the name. */
+function artifactLabel(part: string, format: string): string {
+  const half = part === 'male' ? 'Male' : part === 'female' ? 'Female' : 'Assembly'
+  return `${half} ${format.toUpperCase()}`
+}
+
+/** kB below a megabyte, MB above: 5838 kB is a number to decode, 5.8 MB is a size. */
+function fileSize(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} kB`
+}
+
 /**
  * Export uses the same asynchronous job model as preview, and is completely
  * independent of it: requesting an export never regenerates the preview, and a
@@ -73,22 +85,24 @@ export function ExportPanel({ params, disabled, allowExperimental }: { params: J
         </label>
         <fieldset className="formats">
           <legend>Formats</legend>
-          {['step', 'stl'].map((name) => (
-            <label key={name} className="checkbox">
-              <input
-                type="checkbox"
-                aria-label={name.toUpperCase()}
-                checked={formats.includes(name)}
-                onChange={() => toggleFormat(name)}
-              />
-              <span>{name.toUpperCase()}</span>
-            </label>
-          ))}
+          <div className="format-options">
+            {['step', 'stl'].map((name) => (
+              <label key={name} className="checkbox">
+                <input
+                  type="checkbox"
+                  aria-label={name.toUpperCase()}
+                  checked={formats.includes(name)}
+                  onChange={() => toggleFormat(name)}
+                />
+                <span>{name.toUpperCase()}</span>
+              </label>
+            ))}
+          </div>
         </fieldset>
       </div>
       <button
         type="button"
-        className="primary"
+        className="primary block lg"
         onClick={run}
         disabled={disabled || busy || formats.length === 0}
         data-testid="export-button"
@@ -106,17 +120,17 @@ export function ExportPanel({ params, disabled, allowExperimental }: { params: J
           {artifacts.map((artifact) => (
             <li key={artifact.name}>
               <a href={apiUrl(artifact.url)} download={artifact.name}>
-                {artifact.name}
+                <span>{artifactLabel(artifact.part, artifact.format)}</span>
+                <span className="artifact-size">{fileSize(artifact.bytes)}</span>
               </a>
-              <span className="detail">{(artifact.bytes / 1024).toFixed(0)} kB</span>
             </li>
           ))}
           {job?.bundle_url && (
             <li>
               <a href={apiUrl(job.bundle_url)} download="tray-mold.zip">
-                bundle.zip
+                <span>Complete bundle</span>
+                <span className="artifact-size">ZIP</span>
               </a>
-              <span className="detail">everything</span>
             </li>
           )}
         </ul>

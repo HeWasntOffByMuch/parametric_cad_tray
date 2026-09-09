@@ -25,8 +25,10 @@ export function App({ options }: { options?: DesignOptions } = {}) {
 
   const [partMode, setPartMode] = useState<PartMode>('both')
   const [viewMode, setViewMode] = useState<ViewMode>('assembled')
-  const [showMale, setShowMale] = useState(true)
-  const [showFemale, setShowFemale] = useState(true)
+  // Kept as the viewer's input, no longer as separate controls: the Part
+  // selector already expresses every state these could reach.
+  const [showMale] = useState(true)
+  const [showFemale] = useState(true)
   const [resetToken, setResetToken] = useState(0)
   const [shared, setShared] = useState<string | null>(null)
 
@@ -106,7 +108,11 @@ export function App({ options }: { options?: DesignOptions } = {}) {
   return (
     <div className="app">
       <header>
-        <h1>Leather tray mold</h1>
+        <div className="brand">
+          <h1>Leather Tray Mold</h1>
+          <span className="kicker">Generator</span>
+        </div>
+        <span className="header-rule" aria-hidden="true" />
         <label className="preset">
           <span className="label" aria-hidden="true">Preset</span>
           <select aria-label="Preset" defaultValue="" onChange={(e) => e.target.value && applyPreset(e.target.value)}>
@@ -151,7 +157,10 @@ export function App({ options }: { options?: DesignOptions } = {}) {
         />
       </aside>
 
+      {/* Status and controls float over the viewport rather than boxing it in
+          above and below, so the model is the largest thing on the page. */}
       <main className="stage">
+        <div className={`viewport ${stale ? 'stale' : ''}`} data-testid="viewport">
         <PreviewStatus
           state={design.previewState}
           job={design.previewJob}
@@ -164,7 +173,6 @@ export function App({ options }: { options?: DesignOptions } = {}) {
           // like a button that does nothing.
           canGenerate={!blocked && design.previewState !== 'clean'}
         />
-        <div className={`viewport ${stale ? 'stale' : ''}`} data-testid="viewport">
           {design.previewUrl ? (
             <Viewer
               url={design.previewUrl}
@@ -177,33 +185,46 @@ export function App({ options }: { options?: DesignOptions } = {}) {
             />
           ) : (
             <div className="placeholder" data-testid="viewer-placeholder">
-              {design.previewState === 'generating'
-                ? 'Building geometry…'
-                : design.previewState === 'failed'
-                  ? 'The build failed. Adjust the parameters and try again.'
-                  : 'No preview yet — press Update preview.'}
+              {design.previewState === 'generating' ? (
+                <>
+                  <span className="headline">Building geometry…</span>
+                  <span className="sub">The mold is being solved from your parameters.</span>
+                </>
+              ) : design.previewState === 'failed' ? (
+                <>
+                  <span className="headline">The build failed</span>
+                  <span className="sub">Adjust the parameters and try again.</span>
+                </>
+              ) : (
+                <>
+                  <span className="headline">No preview yet</span>
+                  <span className="sub">Set the tray dimensions on the left, then press Update preview.</span>
+                </>
+              )}
             </div>
           )}
           {stale && <div className="stale-badge">Preview out of date</div>}
+          <ViewerControls
+            partMode={partMode}
+            setPartMode={setPartMode}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            onReset={() => setResetToken((t) => t + 1)}
+          />
         </div>
-        <ViewerControls
-          partMode={partMode}
-          setPartMode={setPartMode}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          showMale={showMale}
-          setShowMale={setShowMale}
-          showFemale={showFemale}
-          setShowFemale={setShowFemale}
-          onReset={() => setResetToken((t) => t + 1)}
-        />
       </main>
 
+      {/* Export first. Someone arriving to make a tray wants the files; the
+          derived figures are how you check the design, not why you came. */}
       <aside className="info">
         <DiagnosticsPanel diagnostics={design.diagnostics} transportError={design.transportError} />
-        <h2>Derived</h2>
-        <DerivedPanel validation={design.validation} hints={schema.ui_hints} job={design.previewJob} />
         <ExportPanel params={design.params} disabled={blocked} allowExperimental={design.allowExperimental} />
+        <details className="details-block" open>
+          <summary>
+            <span className="chevron" aria-hidden="true">▾</span> Derived
+          </summary>
+          <DerivedPanel validation={design.validation} hints={schema.ui_hints} job={design.previewJob} />
+        </details>
         <p className="version">
           schema {schema.schema_version} · model {schema.model_version}
         </p>
