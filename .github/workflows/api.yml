@@ -175,6 +175,7 @@ jobs:
           IMAGE: ${{ needs.build.outputs.image }}
           PROXY: ${{ vars.TRAYMOLD_PROXY }}
           API_BIND: ${{ vars.TRAYMOLD_API_BIND }}
+          PROXY_NETWORK: ${{ vars.TRAYMOLD_PROXY_NETWORK }}
         run: |
           # Pinned to this commit, not to :latest, so the VPS runs exactly what
           # this run built and a rollback is re-running an older workflow.
@@ -186,8 +187,19 @@ jobs:
           TRAYAPI_WORKERS=${WORKERS:-2}
           TRAYMOLD_MEMORY_LIMIT=${MEMORY:-3g}
           TRAYMOLD_API_BIND=${API_BIND:-127.0.0.1:8000}
+          TRAYMOLD_PROXY_NETWORK=${PROXY_NETWORK}
           EOF
           rm -f deploy/.env.local
+
+          # A containerised proxy cannot reach a loopback-bound API - inside it,
+          # 127.0.0.1 is itself - so it joins the API to the proxy's own network
+          # and addresses it as traymold-api:8000.
+          files="-f docker-compose.yml"
+          if [ -n "$PROXY_NETWORK" ]; then
+            files="$files -f docker-compose.proxy-net.yml"
+            echo "joining docker network: $PROXY_NETWORK"
+          fi
+          echo "COMPOSE_FILE_ARGS=$files" >> "$GITHUB_ENV"
 
           # caddy: run the bundled proxy, which needs 80 and 443 to itself.
           # external: run the API alone on TRAYMOLD_API_BIND and leave TLS to
@@ -235,6 +247,7 @@ jobs:
           PORT: ${{ secrets.VPS_PORT }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
+          PROXY_NETWORK: ${{ vars.TRAYMOLD_PROXY_NETWORK }}
         run: |
           # APP_DIR is resolved once, by the previous step.
           DIR="$APP_DIR"
@@ -246,13 +259,19 @@ jobs:
           printf '%s' "$GHCR_TOKEN" \
             | $SSH "docker login ghcr.io -u ${GHCR_USER} --password-stdin"
 
+          if [ -n "${PROXY_NETWORK:-}" ] \
+             && ! $SSH "docker network inspect '$PROXY_NETWORK'" >/dev/null 2>&1; then
+            echo "::error::No docker network named '$PROXY_NETWORK' on the VPS. Run 'docker network ls' there and set TRAYMOLD_PROXY_NETWORK to the network the reverse proxy container is on."
+            exit 1
+          fi
+
           # Passed on the command line rather than through the env file, so the
           # active profile is visible in the log and does not depend on how
           # compose resolves COMPOSE_PROFILES from --env-file.
           $SSH bash -s <<EOF
           set -euo pipefail
           cd '$DIR'
-          COMPOSE="docker compose --env-file .env $COMPOSE_PROFILE_ARGS"
+          COMPOSE="docker compose $COMPOSE_FILE_ARGS --env-file .env $COMPOSE_PROFILE_ARGS"
           \$COMPOSE pull
           \$COMPOSE up -d --remove-orphans --wait --wait-timeout 240
           docker logout ghcr.io
@@ -281,6 +300,7 @@ jobs:
           ORIGINS: ${{ vars.TRAYAPI_ALLOWED_ORIGINS }}
           PROXY: ${{ vars.TRAYMOLD_PROXY }}
           API_BIND: ${{ vars.TRAYMOLD_API_BIND }}
+          PROXY_NETWORK: ${{ vars.TRAYMOLD_PROXY_NETWORK }}
         run: |
           base="https://${DOMAIN}"
           # In caddy mode a first deploy is waiting on Let's Encrypt, which can

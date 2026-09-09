@@ -182,12 +182,61 @@ api.example.com {
 }
 ```
 
-### Traefik
+### When the proxy is itself a container
 
-Traefik reaches containers over a docker network rather than the host, so also
-attach the `api` service to Traefik's network in a compose override, then route
-to it on port 8000. Traefik does not buffer responses by default, so SSE works
-without extra configuration — but verify it with `deploy/smoke.sh` rather than
+`ss -lptn` showing `docker-proxy` on 80/443 means the proxy is a container —
+Nginx Proxy Manager, Traefik, a dockerised nginx or Caddy, or a PaaS like
+Coolify. **`127.0.0.1:8000` will not reach the API from there**: inside that
+container, loopback is the container.
+
+Put both on one docker network instead. Find it:
+
+```bash
+docker network ls
+docker inspect <proxy-container> --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}'
+```
+
+Set the `TRAYMOLD_PROXY_NETWORK` repository variable to that name. The deploy
+then adds `deploy/docker-compose.proxy-net.yml`, which joins the API to it under
+the alias **`traymold-api`**, and the proxy forwards to:
+
+```
+http://traymold-api:8000
+```
+
+Everything else — the SSE un-buffering, the read timeout, the body cap — is
+exactly as above with that address substituted for `127.0.0.1:8000`. The deploy
+checks the network exists before touching the stack, so a wrong name fails in CI
+rather than half-way through a restart on the host.
+
+**Nginx Proxy Manager**: add a Proxy Host — scheme `http`, hostname
+`traymold-api`, port `8000`, Websockets Support on. Then paste this into the
+Advanced tab, because NPM's generated config buffers the event stream:
+
+```nginx
+location ~ ^/api/jobs/[^/]+/events$ {
+    proxy_pass http://traymold-api:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_buffering off;
+    proxy_cache off;
+    gzip off;
+    proxy_read_timeout 300s;
+}
+location /api/ {
+    proxy_pass http://traymold-api:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 300s;
+    client_max_body_size 1m;
+}
+```
+
+**Traefik**: it discovers by label rather than by config file, and does not
+buffer responses, so the shared network plus router and service labels on the
+`api` service is all it needs — but verify with `deploy/smoke.sh` rather than
 assuming.
 
 After wiring any of them up, prove it end to end from your machine:
@@ -300,6 +349,7 @@ long-lived registry credential is stored on the host.
 | `TRAYAPI_WORKERS` | defaults to `2` | api |
 | `TRAYMOLD_MEMORY_LIMIT` | defaults to `3g` | api |
 | `TRAYMOLD_API_BIND` | defaults to `127.0.0.1:8000`; change the port if something else on the host has it | api |
+| `TRAYMOLD_PROXY_NETWORK` | the docker network an existing containerised proxy is on; joins the API to it as `traymold-api` | api |
 | `TRAYMOLD_API_BASE_URL` | only if the API is not plain https on `TRAYMOLD_API_DOMAIN` | pages |
 
 The frontend build takes its API URL from `TRAYMOLD_API_BASE_URL` if set and
@@ -391,6 +441,7 @@ docker volume rm traymold_artifacts
 |---|---|
 | the browser reports a CORS error | `TRAYAPI_ALLOWED_ORIGINS` — the exact origin, no trailing slash |
 | `Bind for 0.0.0.0:80 failed: port is already allocated` | another service owns 80/443; switch `TRAYMOLD_PROXY` to `external` and front the API with it (§2a) |
+| the proxy container gets connection refused on `127.0.0.1:8000` | loopback there is the proxy itself; set `TRAYMOLD_PROXY_NETWORK` and forward to `traymold-api:8000` |
 | Caddy loops on ACME | DNS does not resolve to this host yet, or port 80 is closed |
 | a preview sits with no progress, then finishes all at once | the proxy is buffering: `flush_interval -1` on the SSE route |
 | `429` on ordinary use | `TRAYAPI_RATE_LIMIT_REQUESTS`; note that cache hits and deduplicated attaches consume no concurrency slot, so a low limit here is a real limit |

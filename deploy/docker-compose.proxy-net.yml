@@ -1,0 +1,26 @@
+# Join a docker network that a reverse proxy already runs on.
+#
+# Needed whenever the proxy is itself a container: from inside it, 127.0.0.1 is
+# the proxy, not the host, so a loopback-bound API is unreachable. Publishing on
+# the docker bridge gateway instead would work but is brittle - the gateway
+# address differs per network - and it loses DNS.
+#
+# On a shared network the proxy addresses the API by name:
+#
+#     traymold-api:8000
+#
+# Enabled by setting the TRAYMOLD_PROXY_NETWORK variable to that network's name
+# (`docker network ls` on the host). The deploy workflow then adds this file.
+services:
+  api:
+    networks:
+      # Kept, so the bundled Caddy still works if both are ever enabled.
+      default: null
+      proxy:
+        aliases:
+          - traymold-api
+
+networks:
+  proxy:
+    external: true
+    name: ${TRAYMOLD_PROXY_NETWORK:?the name of the existing proxy's docker network}
