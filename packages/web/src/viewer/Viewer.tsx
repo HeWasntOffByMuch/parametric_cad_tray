@@ -71,30 +71,24 @@ function MoldScene({ url, partMode, viewMode, showMale, showFemale, setExtent }:
   useEffect(() => {
     const box = new THREE.Box3().setFromObject(cloned)
     if (box.isEmpty()) return
-    const size = box.getSize(new THREE.Vector3())
     const centre = box.getCenter(new THREE.Vector3())
-    const radius = Math.max(size.x, size.y, size.z) * 0.85
-    const fov = ((camera as THREE.PerspectiveCamera).fov * Math.PI) / 180
-    const distance = radius / Math.sin(fov / 2)
+    const sphere = box.getBoundingSphere(new THREE.Sphere())
+    const limits = cameraLimits(sphere.radius, (camera as THREE.PerspectiveCamera).fov)
     // Plain world coordinates: the box already reflects the GLB's own Y-up
     // rotation, so there is nothing left to convert here.
     camera.position.set(
-      centre.x + distance * 0.62,
-      centre.y + distance * 0.55,
-      centre.z + distance * 0.62,
+      centre.x + limits.distance * 0.62,
+      centre.y + limits.distance * 0.55,
+      centre.z + limits.distance * 0.62,
     )
-    // Clip to what is actually in front of the camera. A near/far spread wider
-    // than the scene needs spends depth-buffer precision on empty space, and the
-    // grid - a large coplanar surface at a shallow angle - is the first thing to
-    // shimmer when it runs out.
-    camera.near = Math.max(distance * 0.01, (distance - radius) * 0.5)
-    camera.far = (distance + radius) * 4
+    camera.near = limits.near
+    camera.far = limits.far
     camera.updateProjectionMatrix()
     if (controls) {
       controls.target.copy(centre)
       controls.update()
     }
-    setExtent(radius)
+    setExtent(sphere.radius)
   }, [cloned, camera, controls, setExtent])
 
   // No rotation here. CadQuery's glTF exporter already writes the Z-up to Y-up
@@ -103,6 +97,35 @@ function MoldScene({ url, partMode, viewMode, showMale, showFemale, setExtent }:
   // edge. The mesh data stays Z-up, which is why the explode offset above is
   // still along the parts' local Z - that is the press axis.
   return <primitive object={cloned} />
+}
+
+/**
+ * Clipping planes and zoom stops, from the model's bounding sphere.
+ *
+ * `near` must follow the model's *size*, never the camera's starting distance.
+ * Deriving it from the start distance looks right until someone zooms: the plane
+ * stays where it was, and everything nearer than it is sliced away, so the mold
+ * appears cut open. The zoom stops then keep the camera from ever reaching the
+ * plane - `minDistance` leaves the nearest surface hundreds of times further out
+ * than `near` even head-on.
+ *
+ * The near/far ratio lands at 20000, which is three.js's own default spread and
+ * ample for a 24-bit depth buffer. Depth precision was never what made the grid
+ * shimmer - drawing an infinite grid out to the fade distance was - so there is
+ * nothing to buy back by squeezing it.
+ *
+ * Pure, so the rule is testable without a WebGL context.
+ */
+export function cameraLimits(radius: number, fovDegrees: number) {
+  const r = Math.max(radius, 1)
+  const fov = (fovDegrees * Math.PI) / 180
+  return {
+    distance: r / Math.sin(fov / 2),
+    near: r / 500,
+    far: r * 40,
+    minDistance: r * 0.5,
+    maxDistance: r * 20,
+  }
 }
 
 /** Grid spacing that suits the model rather than the scene's units: a 60 mm tray
@@ -119,6 +142,7 @@ export function Viewer(props: ViewerProps) {
   const [radius, setRadius] = useState(150)
   useEffect(() => setKey((k) => k + 1), [props.resetToken])
   const grid = gridSpacing(radius)
+  const limits = cameraLimits(radius, 40)
 
   return (
     <Canvas
@@ -154,7 +178,13 @@ export function Viewer(props: ViewerProps) {
       {/* Damping at 0.12 coasts for several seconds after a drag; the camera is
           still moving that whole time. 0.25 keeps the motion smooth but settles
           quickly, so the scene is actually still when it looks still. */}
-      <OrbitControls makeDefault enableDamping dampingFactor={0.25} />
+      <OrbitControls
+        makeDefault
+        enableDamping
+        dampingFactor={0.25}
+        minDistance={limits.minDistance}
+        maxDistance={limits.maxDistance}
+      />
     </Canvas>
   )
 }
