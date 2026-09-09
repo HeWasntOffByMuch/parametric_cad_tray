@@ -21,7 +21,15 @@ from .mold import (
 )
 from .params import Params
 from .presets import PRESETS
-from .profiles import OffsetError, ProfileError, offset_profile, sample_wire
+from .profiles import (
+    OffsetError,
+    ProfileError,
+    curvature_limits,
+    offset_profile,
+    sample_wire,
+)
+from .quality import Quality, resolve as resolve_quality
+from .validate import Diagnostic, ValidationError, validate
 from .version import MODEL_VERSION, SCHEMA_VERSION
 
 __all__ = [
@@ -31,6 +39,8 @@ __all__ = [
     "apply_male_root_blend", "apply_male_floor_blend", "apply_female_entry_blend",
     "apply_features", "offset_profile", "sample_wire",
     "derive", "Derived", "forming_gap",
-    "ProfileError", "OffsetError",
+    "ProfileError", "OffsetError", "curvature_limits",
+    "validate", "Diagnostic", "ValidationError",
+    "Quality", "resolve_quality",
     "SCHEMA_VERSION", "MODEL_VERSION",
 ]

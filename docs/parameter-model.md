@@ -28,9 +28,18 @@ derived from it.
 5. **Strongly typed, not stringly typed.** Profile families are a discriminated
    union named for their curve construction, so an obround cannot carry a corner
    setback and an ellipse cannot carry a `rho`.
-6. **Datum is explicit.** `length / width / depth` are the finished tray's
-   **inner** dimensions (the plug surface) by default — which is what the
-   reference's "4 × 7" means. `tray.datum` switches to `outer`.
+6. **Datum is explicit and `outer` is refused.** `length / width / depth` are the
+   finished tray's **inner** dimensions — the male forming profile, which is what
+   the reference's "4 × 7" means. `tray.datum = "outer"` is accepted by the schema
+   so the intent is expressible, but `validate` returns `E-DATUM-001` and `build`
+   raises. Outer dimensions are never silently reinterpreted as inner ones. The
+   rule goes away when a real outer→inner conversion exists.
+
+7. **Draft is experimental.** The current implementation preserves a constant
+   **profile-plane (horizontal)** gap; the true normal separation is `gap·cos θ`
+   (−45.6 µm at 10° on a 3 mm gap). Measured in
+   [`architecture.md` §9](./architecture.md#9-draft-is-experimental). No semantic
+   contract has been chosen, so draft is not production-ready.
 
 ---
 
@@ -43,8 +52,8 @@ derived from it.
 | `profile` | `ProfileSpec` | `G2QuinticObroundProfile(175, 105)` | discriminated union, §2.2; carries `length` and `width` |
 | `depth` | float mm | 25.0 | draw depth, Z |
 | `datum` | `"inner" \| "outer"` | `inner` | which surface the dimensions describe |
-| `draft_angle` | float deg | 0.0 | 0 in the reference |
-| `draft_mode` | `"both" \| "plug_only" \| "cavity_only"` | `both` | `both` keeps the gap constant with height |
+| `draft_angle` | float deg | 0.0 | **experimental**, see below; 0 in the reference |
+| `draft_mode` | `"both" \| "plug_only" \| "cavity_only"` | `both` | |
 
 ### 2.2 `ProfileSpec` — named for the curve construction
 
@@ -108,18 +117,31 @@ those live in `mold`, `mold.*_blend` and `manufacturing` respectively.
 
 ### 2.4 Concept 3 — `mold.*_blend`: 3D edge treatments
 
-Each treatment is an independent `EdgeTreatment(style, size)`, applied to a solid
-*after* the base profiles exist. `size` is a setback, not a radius, except for
-`style="circular"` where they coincide.
+Each treatment is an independent, **semantically typed** value, applied to a solid
+*after* the base profiles exist. The type carries the design meaning and names its
+own parameter accordingly:
+
+```python
+class CircularFillet:     kind="circular_fillet";   radius: float
+class G2QuinticBlend:     kind="g2_quintic_blend";  setback: float
+class ChamferTreatment:   kind="chamfer";           distance: float
+class NoTreatment:        kind="none"
+```
+
+`blends.compile_treatment` is the one place that meaning becomes geometry: every
+treatment compiles to a height-dependent plan offset of the base profile, and the
+solid is lofted through those offsets. **No OCC 3D fillet is used**, because the
+profile-offset loft reproduces the reference more robustly and to ~1 µm
+([`architecture.md` §4.5](./architecture.md#45-the-3d-edge-treatments-are-plan-offsets-too-and-are-compiled-into-them)).
+The semantic type survives that compilation — it is what the schema, the UI and
+the diagnostics speak in.
 
 | field | reference | applies to |
 |---|---|---|
-| `male_root_blend` | `circular`, 1.2 | plug ↔ base plate junction (adds material) |
-| `male_floor_blend` | `g2_quintic`, 5.0 | plug top edge = the tray's floor radius |
-| `female_entry_blend_top` | `g2_quintic`, 3.0 | cavity mouth, top face |
-| `female_entry_blend_bottom` | `none`, 0.0 | cavity mouth, bottom face (sharp in the reference) |
-
-`style` ∈ `g2_quintic | circular | chamfer | none`.
+| `male_root_blend` | `CircularFillet(radius=1.2)` | plug ↔ base plate junction (adds material) |
+| `male_floor_blend` | `G2QuinticBlend(setback=5.0)` | plug top edge = the tray's floor radius |
+| `female_entry_blend_top` | `G2QuinticBlend(setback=3.0)` | cavity mouth, top face |
+| `female_entry_blend_bottom` | `NoTreatment()` | cavity mouth, bottom face (sharp in the reference) |
 
 The reference deliberately mixes vocabularies — a true circular rolling-ball
 fillet at the root, the G2 quintic everywhere else — so the style is per
@@ -150,15 +172,36 @@ Reference note: clamp holes sit on one diagonal and pry notches on the other, so
 `diagonal` is part of the schema — the female has C2 rotational symmetry, not
 mirror symmetry.
 
-### 2.7 `manufacturing` and `export`
+### 2.7 `manufacturing` and `quality`
 
 `manufacturing`: `pin_fit_clearance` (0.20), `min_wall` (2.0),
 `nozzle_diameter` (0.4). These are printer quantities and must never be confused
 with the forming gap.
 
-`export`: `linear_deflection` (0.05), `angular_deflection` (0.20),
-`blend_sections` (48 — the loft section count per edge treatment,
-[`architecture.md` §7.4](./architecture.md#74-lofting-beats-filleting)).
+`quality`: `mode` (`preview` | `export`) plus optional overrides for
+`blend_sections`, `max_section_sagitta`, `linear_deflection` and
+`angular_deflection`. Leave the overrides at `None` to take the mode's measured
+defaults.
+
+**Both modes describe the same geometry** — identical base profile, identical
+forming gap, identical treatment semantics, identical correctness protections.
+They differ only in loft section density and tessellation tolerance.
+
+| | export | preview |
+|---|---|---|
+| `max_section_sagitta` | 0.002 mm | 0.05 mm |
+| `blend_sections` (a **cap**, not a count) | 48 | 16 |
+| resolved sections on the reference | 15 / 35 / 28 | 4 / 8 / 7 |
+| `linear_deflection` / `angular_deflection` | 0.05 mm / 0.20 rad | 0.25 mm / 0.50 rad |
+| measured deviation vs STEP | ≤ 4.2 µm | ≤ 29.9 µm |
+| build time, both parts | 5.43 s | 2.51 s |
+
+Section counts are derived from `max_section_sagitta`, not set directly: a chord
+`c` across a cross-section of radius `R` deviates by `c²/8R`, so the count follows
+from the treatment's own size. `blend_sections` only caps it.
+
+`mold.parts` selects which halves to build (`male`, `female`); an unselected half
+is `None` in the result.
 
 ---
 
@@ -181,10 +224,10 @@ Params(
         flange_width=30.0,
         base_plate_thickness=15.0,
         cavity_plate_thickness=25.0,
-        male_root_blend=EdgeTreatment(style="circular",   size=1.2),
-        male_floor_blend=EdgeTreatment(style="g2_quintic", size=5.0),
-        female_entry_blend_top=EdgeTreatment(style="g2_quintic", size=3.0),
-        female_entry_blend_bottom=EdgeTreatment(style="none", size=0.0),
+        male_root_blend=CircularFillet(radius=1.2),
+        male_floor_blend=G2QuinticBlend(setback=5.0),
+        female_entry_blend_top=G2QuinticBlend(setback=3.0),
+        female_entry_blend_bottom=NoTreatment(),
     ),
     features=Features(
         clamp_holes=ClampHoles(enabled=True, pattern="diagonal_pair", diagonal="nw_se",
@@ -206,7 +249,9 @@ Computed in `derive.py`; never accepted as input.
 |---|---|---|
 | `forming_gap` | `clearance + thickness × (1 − compression)` | 3.000 |
 | `corner_setback` | from the profile family | 52.5 |
-| `corner_radius_min` | `factor(corner_style) × corner_setback` | 37.90 |
+| `corner_radius_min` | `factor(corner_style) × corner_setback`; bounds INWARD offsets only | 37.90 |
+| `max_inward_offset` | same as `corner_radius_min` — the convex minimum radius | 37.90 |
+| `max_outward_offset` | min concave radius; `inf` for a convex profile | `inf` |
 | `plate_length` / `plate_width` | `length/width + 2 × flange_width` | 235.0 / 165.0 |
 | `female_flange_width` | `flange_width − forming_gap` | 27.0 |
 | `closed_height` | `base_plate_thickness + cavity_plate_thickness` | 40.0 |
@@ -247,7 +292,23 @@ mold.flange_width ─► plate size ─► feature inset windows
 
 Edge treatments, plate thicknesses and features are leaves. Nothing flows back up.
 
-### 5.2 The boundary, as tested
+### 5.2 Direction-aware curvature
+
+An offset cusps only where it reaches the local radius of curvature **on the side
+it moves towards**, and those are opposite sides for the two directions:
+
+| offset direction | cusps on | limit |
+|---|---|---|
+| inward (male edge treatments) | convex regions | `max_inward_offset` = 37.90 mm on the reference |
+| outward (**the forming gap**) | concave regions | `max_outward_offset` = `inf`, every family here is convex |
+
+So a 60 mm forming gap on the reference profile is valid and builds, even though
+it is 1.6× the convex minimum radius. Tested both ways in
+`tests/test_offset_direction.py`. The realised-distance verifier stays behind the
+rules as the numerical backstop, and earns it: at 37.9 mm inward — just inside the
+measured limit — the rule passes and the verifier catches the degraded geometry.
+
+### 5.3 The boundary, as tested
 
 | changing this | must change the female base profile |
 |---|---|
@@ -267,7 +328,7 @@ Equivalence is asserted on three measures, two discretisation-free: bounding box
 relative), and sampled deviation (0.1 µm; the sampled floor is ~12 nm of chord
 sagitta).
 
-### 5.3 Diagnostics
+### 5.4 Diagnostics
 
 `error` refuses the build; `warning` builds and flags. Codes marked ✓ are
 implemented; the rest are specified for the validation milestone.
@@ -277,17 +338,18 @@ implemented; the rest are specified for the validation milestone.
 | `E-SHAPE-001` ✓ | error | `corner_setback > min(L,W)/2` | setback cannot exceed the half-width |
 | `E-SHAPE-004` ✓ | error | any of `length,width,depth ≤ 0` | |
 | `W-SHAPE-003` | warn | `corner_setback < 3 × leather.thickness` | leather will not take that corner |
-| `E-BLEND-010` | error | `floor_blend.size > depth / 2` | no room in Z |
-| `E-BLEND-011` | error | `blend.size ≥ corner_radius_min` | blend exceeds local curvature → self-intersection, not a clamp |
+| `E-BLEND-010` ✓ | error | `floor_blend.size > depth / 2` | no room in Z |
+| `E-BLEND-011` ✓ | error | a **male** treatment's size ≥ `max_inward_offset` | male treatments offset inward, so the convex minimum radius bounds them |
 | `E-BLEND-012` | error | `min(L,W) − 2 × floor_blend.size ≤ 0` | the plug's top face degenerates |
-| `E-BLEND-013` | error | `entry_top.size + entry_bottom.size > cavity_plate_thickness` | the rim blends meet |
-| `E-BLEND-015` | error | `root_blend.size + floor_blend.size ≥ depth` | no vertical wall left |
-| `E-GAP-020` | error | `forming_gap ≤ 0` | plug larger than cavity |
-| `E-GAP-025` | error | `forming_gap ≥ corner_radius_min` on a concave region | offset self-intersects |
+| `E-BLEND-013` ✓ | error | `entry_top.size + entry_bottom.size > cavity_plate_thickness` | the rim blends meet |
+| `E-BLEND-015` ✓ | error | `root_blend.size + floor_blend.size ≥ depth` | no vertical wall left |
+| `E-GAP-020` ✓ | error | `forming_gap ≤ 0` | plug larger than cavity |
+| `E-GAP-025` ✓ | error | `forming_gap ≥ max_outward_offset` (the **concave** minimum radius) | the outward offset would cusp. For a convex profile this is `inf`, so a gap larger than the convex minimum radius is **valid** and must not be refused |
 | `E-GAP-026` ✓ | error | realised offset distance ≠ requested within 10 µm | OCC degraded silently — refuse, never ship |
-| `W-GAP-021` | warn | `forming_gap < 0.4` | below FDM resolution; the halves fuse |
-| `E-MOLD-040` | error | `cavity_plate_thickness < depth` | the plug protrudes |
-| `E-MOLD-041` | error | `female_flange_width < min_wall` | i.e. `flange_width − gap < min_wall` |
+| `E-DATUM-001` ✓ | error | `tray.datum != "inner"` | no outer→inner conversion exists; never reinterpret silently |
+| `W-GAP-021` ✓ | warn | `forming_gap < 0.4` | below FDM resolution; the halves fuse |
+| `E-MOLD-040` ✓ | error | `cavity_plate_thickness < depth` | the plug protrudes |
+| `E-MOLD-041` ✓ | error | `female_flange_width < min_wall` | i.e. `flange_width − gap < min_wall` |
 | `E-FEAT-050` | error | clamp hole to cavity wall `< d/2 + min_wall` | hole breaks into the cavity |
 | `E-FEAT-051` | error | `inset < d/2 + min_wall` | hole breaks the plate edge |
 | `E-FEAT-053` | error | a pry notch overlaps a clamp hole | the reference avoids this via opposite diagonals |

@@ -15,7 +15,9 @@ from traymold.derive import forming_gap
 from traymold.profiles import profile_deviation
 from traymold.params import (
     CircularObroundProfile,
-    EdgeTreatment,
+    CircularFillet,
+    ChamferTreatment,
+    G2QuinticBlend,
     G2QuinticObroundProfile,
     Params,
 )
@@ -70,10 +72,10 @@ def test_forming_gap_is_realised_exactly():
 @pytest.mark.parametrize(
     "mutation",
     [
-        pytest.param({"male_root_blend": EdgeTreatment(style="circular", size=3.0)}, id="male_root_blend"),
-        pytest.param({"male_floor_blend": EdgeTreatment(style="circular", size=9.0)}, id="male_floor_blend"),
-        pytest.param({"female_entry_blend_top": EdgeTreatment(style="circular", size=6.0)}, id="female_entry_blend"),
-        pytest.param({"female_entry_blend_bottom": EdgeTreatment(style="g2_quintic", size=2.0)}, id="female_entry_blend_bottom"),
+        pytest.param({"male_root_blend": CircularFillet(radius=3.0)}, id="male_root_blend"),
+        pytest.param({"male_floor_blend": CircularFillet(radius=9.0)}, id="male_floor_blend"),
+        pytest.param({"female_entry_blend_top": CircularFillet(radius=6.0)}, id="female_entry_blend"),
+        pytest.param({"female_entry_blend_bottom": G2QuinticBlend(setback=2.0)}, id="female_entry_blend_bottom"),
         pytest.param({"base_plate_thickness": 40.0}, id="base_plate_thickness"),
         pytest.param({"cavity_plate_thickness": 60.0}, id="cavity_plate_thickness"),
         pytest.param({"flange_width": 55.0}, id="flange_width"),
@@ -83,6 +85,23 @@ def test_edge_treatments_and_plates_do_not_change_the_female_profile(mutation):
     a = REF_4X7
     b = a.model_copy(update={"mold": a.mold.model_copy(update=mutation)})
     assert_profiles_equivalent(make_female_profile(a), make_female_profile(b))
+
+
+def test_changing_a_treatment_type_does_not_change_the_female_profile():
+    """Not just the size - the semantic type too."""
+    a = REF_4X7
+    b = a.model_copy(update={"mold": a.mold.model_copy(update={
+        "male_floor_blend": ChamferTreatment(distance=5.0),
+        "male_root_blend": G2QuinticBlend(setback=1.2),
+    })})
+    assert_profiles_equivalent(make_female_profile(a), make_female_profile(b))
+
+
+def test_quality_mode_does_not_change_the_female_profile():
+    a = REF_4X7
+    assert_profiles_equivalent(
+        make_female_profile(a), make_female_profile(a.with_quality("preview"))
+    )
 
 
 def test_manufacturing_features_do_not_change_the_female_profile():
@@ -102,10 +121,10 @@ def test_manufacturing_features_do_not_change_the_female_profile():
 
 def test_male_root_fillet_1p2_vs_3p0(): 
     params_a = REF_4X7.model_copy(
-        update={"mold": REF_4X7.mold.model_copy(update={"male_root_blend": EdgeTreatment(style="circular", size=1.2)})}
+        update={"mold": REF_4X7.mold.model_copy(update={"male_root_blend": CircularFillet(radius=1.2)})}
     )
     params_b = REF_4X7.model_copy(
-        update={"mold": REF_4X7.mold.model_copy(update={"male_root_blend": EdgeTreatment(style="circular", size=3.0)})}
+        update={"mold": REF_4X7.mold.model_copy(update={"male_root_blend": CircularFillet(radius=3.0)})}
     )
     assert_profiles_equivalent(make_female_profile(params_a), make_female_profile(params_b))
 

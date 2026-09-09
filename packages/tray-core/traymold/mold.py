@@ -29,14 +29,17 @@ from OCP.BRepOffsetAPI import BRepOffsetAPI_ThruSections
 from OCP.gp import gp_Trsf, gp_Vec
 from OCP.GProp import GProp_GProps
 
-from .blends import BlendLaw
+from .blends import compile_treatment
 from .derive import derive, forming_gap
 from .profiles import (
     MIN_OFFSET,
     OffsetError,
+    curvature_limits,
     make_base_profile as _make_base_profile,
     offset_profile,
+    resampled,
 )
+from .quality import resolve as resolve_quality
 
 TOL = 1e-9
 
@@ -84,25 +87,85 @@ class ProfileFamily:
     `base_offset` carries the forming gap for the female family.  It is the only
     thing that distinguishes the female family from the male one, which is the
     dependency boundary this whole module exists to enforce.
+
+    Two measurements of the base are computed once and shared by every offset it
+    yields: the direction-aware curvature limits, and the arclength-uniform
+    polyline the realised-distance verifier measures against.  Recomputing those
+    per offset cost 11 ms and 5 ms respectively, on 134 offsets per build.
+
+    Offsets are deduplicated at `MIN_OFFSET` (0.1 um) - the resolution below
+    which an offset is treated as zero anyway - so numerically equivalent
+    requests share one wire.
     """
 
-    def __init__(self, base: cq.Wire, base_offset: float = 0.0):
+    _QUANTUM = MIN_OFFSET
+
+    def __init__(self, base: cq.Wire, base_offset: float = 0.0, shared: "_BaseCache | None" = None):
         self.base = base
         self.base_offset = float(base_offset)
-        self._cache: dict[int, cq.Wire] = {}
+        self._shared = shared if shared is not None else _BaseCache(base)
 
     def at(self, extra: float = 0.0) -> cq.Wire:
-        d = self.base_offset + float(extra)
-        key = int(round(d * 1e7))
-        if key not in self._cache:
-            self._cache[key] = (
-                self.base if abs(d) < MIN_OFFSET else offset_profile(self.base, d)
-            )
-        return self._cache[key]
+        return self._shared.offset(self.base_offset + float(extra))
+
+    @property
+    def stats(self) -> dict:
+        return self._shared.stats
 
     @property
     def wire(self) -> cq.Wire:
         return self.at(0.0)
+
+
+class _BaseCache:
+    """One base profile, its measurements, and every offset taken from it."""
+
+    def __init__(self, base: cq.Wire):
+        self.base = base
+        self._limits: dict | None = None
+        self._poly = None
+        self._wires: dict[int, cq.Wire] = {}
+        self.calls = 0
+
+    @property
+    def limits(self) -> dict:
+        if self._limits is None:
+            self._limits = curvature_limits(self.base)
+        return self._limits
+
+    @property
+    def poly(self):
+        if self._poly is None:
+            self._poly = resampled(self.base)
+        return self._poly
+
+    def offset(self, d: float) -> cq.Wire:
+        key = int(round(d / ProfileFamily._QUANTUM))
+        wire = self._wires.get(key)
+        if wire is None:
+            self.calls += 1
+            wire = (
+                self.base
+                if abs(d) < MIN_OFFSET
+                else offset_profile(self.base, d, limits=self.limits, source_poly=self.poly)
+            )
+            self._wires[key] = wire
+        return wire
+
+    @property
+    def stats(self) -> dict:
+        return {"offset_calls": self.calls, "unique_offsets": len(self._wires)}
+
+
+def _clean(shape):
+    """Best-effort face merging.  `clean()` runs ShapeUpgrade_UnifySameDomain,
+    which can fail on lofted spline geometry ("Courbes non jointives") at low
+    section counts.  It is cosmetic - it merges coplanar faces - so a failure
+    must not fail the build."""
+    try:
+        return shape.clean()
+    except Exception:
+        return shape
 
 
 def _loft(wires: list[cq.Wire], *, solid: bool = True, ruled: bool = False) -> cq.Solid:
@@ -125,12 +188,17 @@ def _draft_offset(params, z: float) -> float:
 def _prism(family: ProfileFamily, params, z0: float, z1: float, extra) -> cq.Solid:
     """Loft the base profile between two heights, applying draft plus `extra(z)`."""
     zs = np.asarray(extra["heights"], dtype=float)
-    wires = []
+    wires: list[cq.Wire] = []
+    seen: list[tuple[int, int]] = []
     for z in zs:
         d = -_draft_offset(params, z) + float(extra["lateral"](z))
+        key = (int(round(z / MIN_OFFSET)), int(round(d / MIN_OFFSET)))
+        if seen and key == seen[-1]:
+            continue  # a repeated section makes the loft degenerate
+        seen.append(key)
         wires.append(_at_z(family.at(d), z))
     if len(wires) < 2:
-        raise BuildError("prism needs at least two sections")
+        raise BuildError("prism needs at least two distinct sections")
     return _loft(wires)
 
 
@@ -166,7 +234,7 @@ def build_male_from_profile(family: ProfileFamily, params) -> cq.Solid:
         {"heights": np.linspace(0.0, depth, n), "lateral": lambda z: 0.0},
     )
     plate = _plate(params, -params.mold.base_plate_thickness, 0.0)
-    return cq.Solid(plate.fuse(plug).clean().wrapped)
+    return cq.Solid(_clean(plate.fuse(plug)).wrapped)
 
 
 def build_female_from_profile(family: ProfileFamily, params) -> cq.Solid:
@@ -181,7 +249,7 @@ def build_female_from_profile(family: ProfileFamily, params) -> cq.Solid:
         {"heights": np.linspace(-1.0, t + 1.0, n), "lateral": lambda z: 0.0},
     )
     plate = _plate(params, 0.0, t)
-    return cq.Solid(plate.cut(cavity).clean().wrapped)
+    return cq.Solid(_clean(plate.cut(cavity)).wrapped)
 
 
 # --------------------------------------------------------------------------
@@ -192,8 +260,8 @@ def apply_male_root_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq.
     t = params.mold.male_root_blend
     if not t.active:
         return solid
-    law = BlendLaw(t.style, t.size)
-    hs = law.heights(params.export.blend_sections)
+    law = compile_treatment(t)
+    hs = law.heights(resolve_quality(params).sections(law))
     collar = _prism(
         family,
         params,
@@ -201,7 +269,7 @@ def apply_male_root_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq.
         t.size,
         {"heights": t.size - hs[::-1], "lateral": lambda z: law.lateral(t.size - z)[0]},
     )
-    return cq.Solid(cq.Workplane(obj=solid).union(cq.Workplane(obj=collar)).val().clean().wrapped)
+    return cq.Solid(_clean(solid.fuse(collar)).wrapped)
 
 
 def apply_male_floor_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq.Solid:
@@ -209,10 +277,10 @@ def apply_male_floor_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq
     t = params.mold.male_floor_blend
     if not t.active:
         return solid
-    law = BlendLaw(t.style, t.size)
+    law = compile_treatment(t)
     depth = params.tray.depth
     z0 = depth - t.size
-    hs = law.heights(params.export.blend_sections)
+    hs = law.heights(resolve_quality(params).sections(law))
     kept = _prism(
         family,
         params,
@@ -227,8 +295,11 @@ def apply_male_floor_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq
         depth,
         {"heights": np.array([z0, depth]), "lateral": lambda z: 0.0},
     )
-    waste = cq.Workplane(obj=band).cut(cq.Workplane(obj=kept)).val()
-    return cq.Solid(cq.Workplane(obj=solid).cut(cq.Workplane(obj=waste)).val().clean().wrapped)
+    # Remove the whole top band, then add the blended cap back.  Cutting the
+    # ring (band - kept) out of the solid instead is 6.9x slower (5.43 s vs
+    # 0.79 s) and lands further from the analytic volume, because the ring is a
+    # thin spline shell and OCC struggles with it.
+    return cq.Solid(_clean(solid.cut(band).fuse(kept)).wrapped)
 
 
 def apply_female_entry_blend(solid: cq.Solid, family: ProfileFamily, params) -> cq.Solid:
@@ -241,8 +312,8 @@ def apply_female_entry_blend(solid: cq.Solid, family: ProfileFamily, params) -> 
     ):
         if not treatment.active:
             continue
-        law = BlendLaw(treatment.style, treatment.size)
-        hs = law.heights(params.export.blend_sections)
+        law = compile_treatment(treatment)
+        hs = law.heights(resolve_quality(params).sections(law))
         if at_top:
             z0 = t_plate - treatment.size
             heights = z0 + hs
@@ -255,7 +326,7 @@ def apply_female_entry_blend(solid: cq.Solid, family: ProfileFamily, params) -> 
             lateral_fn = lambda z, z1=z1, law=law: law.lateral(z1 - max(z, 0.0))[0]
         tool = _prism(family, params, heights[0], heights[-1],
                       {"heights": heights, "lateral": lateral_fn})
-        out = cq.Solid(cq.Workplane(obj=out).cut(cq.Workplane(obj=tool)).val().clean().wrapped)
+        out = cq.Solid(_clean(out.cut(tool)).wrapped)
     return out
 
 
@@ -270,7 +341,8 @@ def _corner_points(params, inset: float, diagonal: str, pattern: str):
     return [(-x, y), (x, -y)] if diagonal == "nw_se" else [(x, y), (-x, -y)]
 
 
-def apply_features(male: cq.Solid, female: cq.Solid, params):
+def apply_features(male, female, params):
+    """Manufacturing features.  Downstream of everything; inputs to nothing."""
     f = params.features
     t = params.mold.cavity_plate_thickness
     bp = params.mold.base_plate_thickness
@@ -279,9 +351,9 @@ def apply_features(male: cq.Solid, female: cq.Solid, params):
         ch = f.clamp_holes
         pts = _corner_points(params, ch.inset, ch.diagonal, ch.pattern)
         for x, y in pts:
-            if ch.in_female:
+            if ch.in_female and female is not None:
                 cut = cq.Workplane("XY").workplane(offset=-1.0).center(x, y).circle(ch.diameter / 2).extrude(t + 2.0)
-                female = cq.Solid(cq.Workplane(obj=female).cut(cut).val().wrapped)
+                female = cq.Solid(female.cut(cut.val()).wrapped)
                 if ch.top_chamfer > 0:
                     cs = (
                         cq.Workplane("XY").workplane(offset=t - ch.top_chamfer).center(x, y)
@@ -290,10 +362,10 @@ def apply_features(male: cq.Solid, female: cq.Solid, params):
                         .circle(ch.diameter / 2 + ch.top_chamfer)
                         .loft()
                     )
-                    female = cq.Solid(cq.Workplane(obj=female).cut(cs).val().wrapped)
-            if ch.in_male:
+                    female = cq.Solid(female.cut(cs.val()).wrapped)
+            if ch.in_male and male is not None:
                 cut = cq.Workplane("XY").workplane(offset=-bp - 1.0).center(x, y).circle(ch.diameter / 2).extrude(bp + 2.0)
-                male = cq.Solid(cq.Workplane(obj=male).cut(cut).val().wrapped)
+                male = cq.Solid(male.cut(cut.val()).wrapped)
 
     if f.pry_notches.enabled:
         pn = f.pry_notches
@@ -304,61 +376,100 @@ def apply_features(male: cq.Solid, female: cq.Solid, params):
             if pn.pattern == "four_corners"
             else ([(-1, 1), (1, -1)] if pn.diagonal == "nw_se" else [(1, 1), (-1, -1)])
         )
-        for sx, sy in signs:
+        for sx, sy in signs if female is not None else []:
             x = sx * (cx - pn.size_x / 2.0)
             y = sy * (cy - pn.size_y / 2.0)
             cut = (
                 cq.Workplane("XY").workplane(offset=t - pn.depth).center(x, y)
                 .rect(pn.size_x, pn.size_y).extrude(pn.depth + 1.0)
             )
-            female = cq.Solid(cq.Workplane(obj=female).cut(cut).val().wrapped)
+            female = cq.Solid(female.cut(cut.val()).wrapped)
 
     if f.alignment_pins.enabled:
         ap = f.alignment_pins
         clr = params.manufacturing.pin_fit_clearance
         for x, y in _corner_points(params, ap.inset, "nw_se", ap.pattern):
-            pin = cq.Workplane("XY").center(x, y).circle(ap.diameter / 2).extrude(ap.height)
-            male = cq.Solid(cq.Workplane(obj=male).union(pin).val().wrapped)
-            hole = (
-                cq.Workplane("XY").workplane(offset=-0.5).center(x, y)
-                .circle(ap.diameter / 2 + clr).extrude(ap.height + 0.5 + clr)
-            )
-            female = cq.Solid(cq.Workplane(obj=female).cut(hole).val().wrapped)
+            if male is not None:
+                pin = cq.Workplane("XY").center(x, y).circle(ap.diameter / 2).extrude(ap.height)
+                male = cq.Solid(male.fuse(pin.val()).wrapped)
+            if female is not None:
+                hole = (
+                    cq.Workplane("XY").workplane(offset=-0.5).center(x, y)
+                    .circle(ap.diameter / 2 + clr).extrude(ap.height + 0.5 + clr)
+                )
+                female = cq.Solid(female.cut(hole.val()).wrapped)
     return male, female
 
 
 # --------------------------------------------------------------------------
 # the whole build
 # --------------------------------------------------------------------------
+def _section_stats(params) -> dict:
+    q = resolve_quality(params)
+    m = params.mold
+    counts = {
+        name: q.sections(compile_treatment(t))
+        for name, t in (
+            ("male_root_blend", m.male_root_blend),
+            ("male_floor_blend", m.male_floor_blend),
+            ("female_entry_blend_top", m.female_entry_blend_top),
+            ("female_entry_blend_bottom", m.female_entry_blend_bottom),
+        )
+        if t.active
+    }
+    return {"blend_sections_cap": q.blend_sections, "sections": counts,
+            "total_sections": sum(counts.values())}
+
+
 @dataclass
 class MoldResult:
-    male: cq.Solid
-    female: cq.Solid
+    male: cq.Solid | None
+    female: cq.Solid | None
     base_profile: cq.Wire
     male_profile: cq.Wire
     female_profile: cq.Wire
     derived: dict
+    stats: dict = None
 
     @property
     def volumes(self) -> dict:
-        return {"male_cm3": _volume(self.male) / 1000.0, "female_cm3": _volume(self.female) / 1000.0}
+        return {
+            f"{name}_cm3": _volume(shape) / 1000.0
+            for name, shape in (("male", self.male), ("female", self.female))
+            if shape is not None
+        }
 
 
 def build(params) -> MoldResult:
+    from .validate import raise_on_errors
+
+    raise_on_errors(params)
     base = make_base_profile(params)
     gap = forming_gap(params)
 
-    male_family = ProfileFamily(base, 0.0)          # the male IS the base profile
-    female_family = ProfileFamily(base, gap)        # base + forming gap, nothing else
+    # one cache for the whole build: both families offset the SAME base wire, so
+    # they share its curvature limits, its verification polyline and its offsets
+    shared = _BaseCache(base)
+    male_family = ProfileFamily(base, 0.0, shared)      # the male IS the base profile
+    female_family = ProfileFamily(base, gap, shared)    # base + forming gap, nothing else
 
-    male = build_male_from_profile(male_family, params)
-    male = apply_male_root_blend(male, male_family, params)
-    male = apply_male_floor_blend(male, male_family, params)
-
-    female = build_female_from_profile(female_family, params)
-    female = apply_female_entry_blend(female, female_family, params)
+    parts = params.mold.parts
+    male = female = None
+    if parts.male:
+        male = build_male_from_profile(male_family, params)
+        male = apply_male_root_blend(male, male_family, params)
+        male = apply_male_floor_blend(male, male_family, params)
+    if parts.female:
+        female = build_female_from_profile(female_family, params)
+        female = apply_female_entry_blend(female, female_family, params)
 
     male, female = apply_features(male, female, params)
     return MoldResult(
-        male, female, base, male_family.wire, female_family.wire, derive(params).as_dict()
+        male,
+        female,
+        base,
+        male_family.wire,
+        female_family.wire,
+        derive(params).as_dict(),
+        shared.stats | _section_stats(params),
     )

@@ -105,3 +105,72 @@ def test_featured_preset_adds_the_stl_revision_features():
     expected = 2 * (np.pi * 3.0**2 * 25.0) + 2 * (15.0 * 15.0 * 8.0) + 2 * 46.08
     assert removed * 1000.0 == pytest.approx(expected, rel=0.02)
     assert R.volume_cm3(featured.male) == pytest.approx(R.volume_cm3(plain.male), abs=1e-9)
+
+
+def analytic_male_volume(params) -> float:
+    """Volume implied by the construction, from the profile's area and perimeter
+    and each treatment's offset law.  Steiner: offsetting a convex closed curve
+    by d changes its enclosed area by P*d + pi*d**2."""
+    import numpy as np
+
+    from traymold.blends import compile_treatment
+    from traymold.profiles import make_base_profile, sample_wire
+
+    pts = sample_wire(make_base_profile(params.tray.profile), 4000)
+    centre = pts.mean(0)
+    s = pts[np.argsort(np.arctan2(*(pts - centre).T[::-1]))]
+    area = abs(0.5 * np.sum(s[:, 0] * np.roll(s[:, 1], -1) - np.roll(s[:, 0], -1) * s[:, 1]))
+    perim = float(np.sum(np.linalg.norm(np.diff(np.vstack([s, s[:1]]), axis=0), axis=1)))
+
+    def moments(treatment):
+        law = compile_treatment(treatment)
+        if not treatment.active:
+            return 0.0, 0.0
+        h = np.linspace(0.0, law.size, 200001)
+        lat = law.lateral(h)
+        return float(np.trapezoid(lat, h)), float(np.trapezoid(lat**2, h))
+
+    d = derive_params(params)
+    plate = d["plate_length"] * d["plate_width"] * params.mold.base_plate_thickness
+    plug = area * params.tray.depth
+    i1r, i2r = moments(params.mold.male_root_blend)
+    i1f, i2f = moments(params.mold.male_floor_blend)
+    added = perim * i1r + np.pi * i2r
+    removed = perim * i1f - np.pi * i2f
+    return float(plate + plug + added - removed) / 1000.0
+
+
+def derive_params(params) -> dict:
+    from traymold.derive import derive
+
+    return derive(params).as_dict()
+
+
+def test_male_volume_matches_the_analytic_construction(built):
+    """A blunt whole-solid invariant.  Section comparisons at sampled heights
+    cannot see a boolean that silently ate the plug; this can.  A regression in
+    loft section spacing once cost the male 394 cm3 while every sampled section
+    still matched."""
+    expected = analytic_male_volume(REF_4X7_STEP)
+    assert R.volume_cm3(built.male) == pytest.approx(expected, rel=5e-4)
+
+
+def test_female_volume_matches_the_analytic_construction(built):
+    import numpy as np
+
+    from traymold.blends import compile_treatment
+    from traymold.profiles import sample_wire
+
+    pts = sample_wire(built.female_profile, 4000)
+    centre = pts.mean(0)
+    s = pts[np.argsort(np.arctan2(*(pts - centre).T[::-1]))]
+    area = abs(0.5 * np.sum(s[:, 0] * np.roll(s[:, 1], -1) - np.roll(s[:, 0], -1) * s[:, 1]))
+    perim = float(np.sum(np.linalg.norm(np.diff(np.vstack([s, s[:1]]), axis=0), axis=1)))
+    d = derive_params(REF_4X7_STEP)
+    t = REF_4X7_STEP.mold.cavity_plate_thickness
+    law = compile_treatment(REF_4X7_STEP.mold.female_entry_blend_top)
+    h = np.linspace(0.0, law.size, 200001)
+    lat = law.lateral(h)
+    entry = perim * float(np.trapezoid(lat, h)) + np.pi * float(np.trapezoid(lat**2, h))
+    expected = (d["plate_length"] * d["plate_width"] * t - area * t - entry) / 1000.0
+    assert R.volume_cm3(built.female) == pytest.approx(expected, rel=5e-4)

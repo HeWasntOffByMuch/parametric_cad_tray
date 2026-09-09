@@ -234,7 +234,7 @@ sketched curve, the female's is an approximated offset surface. Together with th
 
 **Verdict: encode the offset relationship directly.** Which is what the core does.
 
-### 4.5 The 3D edge treatments are plan offsets too
+### 4.5 The 3D edge treatments are plan offsets too, and are compiled into them
 
 Every edge treatment in the reference is the base profile offset in plan by a
 height-dependent amount. Measured against the STEP:
@@ -250,6 +250,17 @@ loft through offset profiles, which is deterministic and cannot fail the way
 OCC's blend algorithms do. It also keeps the dependency boundary trivially
 enforceable — a treatment is a function of the base profile and its own size, and
 of nothing else.
+
+Treatments stay **semantically typed** — a circular fillet has a *radius*, a G2
+blend a *setback*, a chamfer a *distance* — and `blends.compile_treatment` is the
+single place that meaning becomes geometry:
+
+```
+analytic base profile
+        +  accumulated plan offset as a function of Z
+        →  section profiles           (always offsets of the base, never chained)
+        →  loft
+```
 
 ### 4.6 Relationships that survive as derived values
 
@@ -373,25 +384,189 @@ complaint, and cannot fail the way blend algorithms on spline-cornered solids do
 The cost is that the lofted surface interpolates between sections; the section
 count is exposed as `export.blend_sections`.
 
-### 7.5 Curvature ceilings are validation, not exceptions
-Any inward offset or blend must stay below `0.72184 · s`. Beyond it the offset
-self-intersects. This is checked arithmetically and by the offset verifier; it is
-never a caught exception dressed up as a clamp. Note the G2 ceiling is ~28 %
-tighter than the circular one, so switching `corner_style` can invalidate a
-working design.
+### 7.5 Curvature ceilings are direction-aware
+An offset cusps only where it reaches the local radius of curvature **on the side
+it moves towards**, and those are opposite sides for the two directions:
+
+* an **inward** offset cusps on **convex** regions → limit = min convex radius
+* an **outward** offset cusps on **concave** regions → limit = min concave radius
+
+Every profile family here is convex, so its **outward offset is unbounded**. The
+forming gap is an outward offset, so it must never be rejected for exceeding the
+convex minimum radius — a 60 mm gap on the reference profile (convex minimum
+37.90 mm) is valid and builds. Edge treatments offset inward and *are* bounded by
+it. `profiles.curvature_limits` returns both, from OCC's exact second derivatives:
+finite differences on a resampled polyline understate the radius badly (22.3 mm
+against the true 37.9 mm).
+
+Note the G2 ceiling is ~28 % tighter than the circular one, so switching
+`corner_style` can invalidate a working design.
+
+### 7.5a The verifier is the backstop, not the rule
+The realised-distance check stays in place behind the curvature rules and earns
+its keep: at 37.9 mm inward — just inside the measured limit — the rule passes and
+the verifier catches the degraded geometry.
 
 ### 7.6 Two reference revisions
 Fidelity against the STEP uses `ref-4x7-step` (no features); the featured
 `ref-4x7` is checked separately against the STL's feature volumes. Mixing them
 produces a 5 cm³ phantom discrepancy.
 
-### 7.7 Build cost
-A full reference build is ~40 s, dominated by ~150 2D offset operations. That is
-acceptable for a CLI and for tests, and is the first thing to profile before any
-interactive preview work begins.
+### 7.7 Loft section spacing is load-bearing
+Sections are spaced mostly by equal arclength along the treatment's
+(height, lateral) cross-section, because these laws move almost all of their
+lateral offset in the last few percent of their height. Equal-height spacing costs
+271 µm of reference deviation at 10 sections against 49 µm for arclength.
 
-### 7.8 Still open
-Draft (`tray.draft_angle`) is implemented as an additional height-dependent plan
-offset and builds, but is untested against any reference — the reference has 0°
-draft everywhere. Flange relief, plate edge chamfer and the datum switch are in
-the schema but not yet in the geometry.
+Pure arclength spacing, though, collapses in height wherever the cross-section has
+a horizontal tangent: on the 1.2 mm circular root fillet it placed consecutive
+sections 1.5 µm apart in z and 60 µm apart in lateral, and the sliver bands made
+the following boolean return garbage — **the male silently lost 394 cm³ while
+every sampled section profile still matched**. Blending 25 % uniform-height
+spacing back in bounds the minimum step and fixes it.
+
+That near-miss is why `test_reference_fidelity.py` now also asserts each half's
+volume against an analytic Steiner construction: section sampling cannot see a
+boolean that ate the solid.
+
+### 7.8 Section counts come from a tolerance, not a feeling
+`Quality.max_section_sagitta` sets a target chord error for the treatment lofts;
+`blend_sections` is only a cap. A chord `c` across a cross-section of radius `R`
+deviates by `c²/8R`, so the count follows from the cross-section's arclength. At
+the export target of 2 µm the reference gets 15 sections on the 1.2 mm root
+fillet, 35 on the 5 mm floor blend and 28 on the 3 mm cavity entry — instead of a
+flat 48 everywhere, for the same fidelity and 40 % fewer offsets.
+
+### 7.9 Still open
+Draft (`tray.draft_angle`) is **experimental**: see §9. Flange relief and plate
+edge chamfer are in the schema but not in the geometry. `tray.datum = "outer"` is
+explicitly refused (`E-DATUM-001`) rather than silently reinterpreted.
+
+---
+
+## 8. Performance
+
+Reference pair, median of 5 runs, tessellation measured separately from B-rep
+construction (`tools/reference_probe/benchmark.py`).
+
+### 8.1 Before
+
+| | |
+|---|---|
+| full build | **38.6 s** |
+| 2D offset operations | 134, all distinct |
+| of the 38.6 s | offsets 30.15 s (78 %), lofts 2.86 s (7 %), rest 5.6 s |
+| **of the 30.15 s spent "offsetting"** | **29.54 s was the realised-distance verifier** |
+
+The headline assumption — that OCC's offset dominated — was wrong. OCC's raw
+offset is **2.0 ms** per call. The verifier's O(n·m) point-to-segment loop was 220
+ms per call and accounted for 76 % of the entire build.
+
+### 8.2 What was changed
+
+| change | effect |
+|---|---|
+| Vectorised the verifier's distance measure, then replaced exhaustive projection with a two-level nearest-segment search (coarse stride 16, best 3 candidates, refine ±16) | 87 ms → 8 ms, bit-identical to brute force (asserted in `test_profiles.py`) |
+| Cached the base profile's curvature limits and verification polyline in a `_BaseCache` shared by both `ProfileFamily` instances | 11 ms + 5 ms saved per offset, ×77 |
+| Deduplicated offsets at `MIN_OFFSET` across the whole build | male and female families now share one cache |
+| Replaced `solid.cut(band.cut(kept))` with `solid.cut(band).fuse(kept)` in the floor blend | 5.43 s → 0.79 s, and lands closer to the analytic volume |
+| Sagitta-driven per-treatment section counts (§7.8) | 134 → 77 offsets at equal fidelity |
+| Arclength-blended section spacing (§7.7) | fewer sections needed for the same accuracy |
+| `clean()` made best-effort | it is cosmetic face merging and must not fail a build |
+| Per-part builds (`mold.parts`) | male-only and female-only are real capabilities, not benchmark artifacts |
+
+**Not** changed, deliberately: nothing was traded away from correctness. The
+curvature rules and the realised-distance verifier run identically in both quality
+modes.
+
+### 8.3 Analytic offsets — investigated, not adopted
+
+OCC's raw 2D offset costs 2.0 ms; 77 calls is 0.15 s, **2.5 %** of an export
+build. Replacing it analytically cannot pay for itself:
+
+* the circular families do have a closed form (`offset(rect(L,W,r), d) = rect(L+2d, W+2d, r+d)`), but they are not the reference;
+* the G2 quintic family has **no** closed form — the offset of a polynomial curve is not polynomial, and §4.4 already showed that re-parameterising the template at `s + gap` is wrong by 182 µm;
+* an analytic path would still need the same verification, which is where the time actually went.
+
+The measurement is recorded here so this is not revisited on intuition.
+
+### 8.4 After
+
+| case | quality | B-rep | tessellation | total | offsets | unique | sections |
+|---|---|---|---|---|---|---|---|
+| male only | export | 4.07 s | 0.059 s | **4.13 s** | 50 | 50 | 78 |
+| female only | export | 1.30 s | 0.039 s | **1.34 s** | 29 | 29 | 78 |
+| both | export | 5.33 s | 0.098 s | **5.43 s** | 77 | 77 | 78 |
+| both, featured | export | 5.47 s | 0.099 s | **5.57 s** | 77 | 77 | 78 |
+| male only | preview | 1.68 s | 0.009 s | **1.69 s** | 12 | 12 | 19 |
+| female only | preview | 0.89 s | 0.007 s | **0.89 s** | 8 | 8 | 19 |
+| both | preview | 2.50 s | 0.015 s | **2.51 s** | 18 | 18 | 19 |
+| both, featured | preview | 2.62 s | 0.016 s | **2.63 s** | 18 | 18 | 19 |
+
+**38.6 s → 5.43 s, a 7.1× speedup**, with fidelity slightly better than before.
+
+Where the remaining export time goes: offsets 1.82 s (30 %), lofts 1.50 s (25 %),
+booleans and everything else 2.64 s (44 %). In preview the booleans are 69 % —
+they are fixed-cost OCC work on spline solids and do not scale with section count.
+The next lever is building each half as a single loft instead of a staged sequence
+of booleans, which would trade away the staged API; it has not been taken.
+
+### 8.5 Quality modes
+
+Both modes describe **the same geometry**: identical base profile, identical
+forming gap, identical treatment semantics, identical correctness protections.
+They differ only in loft section density and tessellation tolerance.
+
+| | export | preview |
+|---|---|---|
+| `max_section_sagitta` | 0.002 mm | 0.05 mm |
+| `blend_sections` cap | 48 | 16 |
+| resolved sections (reference) | 15 / 35 / 28 | 4 / 8 / 7 |
+| linear / angular deflection | 0.05 mm / 0.20 rad | 0.25 mm / 0.50 rad |
+| **section deviation vs STEP** | male 4.16 µm, female 3.05 µm | male 4.16 µm, female 24.77 µm |
+| **3D surface deviation vs STEP** | male 3.06 µm, female 2.67 µm | male 29.87 µm, female 4.65 µm |
+| build (both parts) | 5.43 s | 2.51 s |
+
+Export beats the 10 µm contract by 2.4×, and is close to the reference's own
+internal accuracy of 2.4 µm. Preview's measured budget is 30 µm, asserted
+separately in `test_quality_modes.py`; it does not affect export.
+
+Two metrics are reported because same-height section comparison is the right
+measure on a vertical wall and misleading where the surface turns horizontal: 0.05
+mm below the plug top the profile moves ~60 mm laterally per mm of height, so a
+1 µm error in the loft's z position reads as 60 µm of "profile deviation" while
+the surface is 1 µm out. `tests/reference.py::surface_deviation` measures the
+surface.
+
+---
+
+## 9. Draft is experimental
+
+The current implementation subtracts the same height-dependent plan offset
+`z·tan(θ)` from **both** profile families. Measured on built solids
+(`tools/reference_probe/draft_analysis.py`, gap 3 mm, measured at mid-wall):
+
+| draft | horizontal separation | h − gap | normal separation | n − gap | gap·cos θ | n − gap·cos θ |
+|---|---|---|---|---|---|---|
+| 0° | 2.999835 | −0.000165 | 3.000000 | +0.000000 | 3.000000 | +0.000000 |
+| 1° | 2.999818 | −0.000182 | 2.999511 | −0.000489 | 2.999543 | −0.000032 |
+| 3° | 2.999854 | −0.000146 | 2.995870 | −0.004130 | 2.995889 | −0.000018 |
+| 5° | 2.999850 | −0.000150 | 2.988571 | −0.011429 | 2.988584 | −0.000013 |
+| 10° | 2.999853 | −0.000147 | 2.954415 | −0.045585 | 2.954423 | −0.000008 |
+
+**The current implementation preserves a constant PROFILE-PLANE (horizontal)
+gap.** The true wall-to-wall normal separation is `gap·cos θ`, matched to within
+0.03 µm at every angle. The horizontal column is flat to 0.18 µm, which is the
+discretisation floor of the measurement.
+
+So the semantic contract is unambiguous *as implemented*; what has **not** been
+decided is whether it is the right one. For a leather forming gap the normal
+separation is arguably what matters — it is the thickness the material is squeezed
+to — and at 10° the current behaviour under-delivers it by 45.6 µm on a 3 mm gap
+(1.5 %). At 3° the error is 4 µm, below anything the process can resolve.
+
+The result does not clearly favour one interpretation, so no contract is chosen
+here. What is recorded: the implementation holds the horizontal gap; the fix, if
+normal is chosen, is to scale the offset by `1/cos θ`; and the reference has 0°
+draft everywhere, so nothing about the reference depends on this. Until the
+contract is decided, draft is **not production-ready** and is documented as such.

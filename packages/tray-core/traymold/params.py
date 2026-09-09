@@ -181,28 +181,101 @@ class FitParams(_Model):
 # --------------------------------------------------------------------------
 # 3. 3D edge treatments - applied AFTER the base profiles exist
 # --------------------------------------------------------------------------
-BlendStyle = Literal["g2_quintic", "circular", "chamfer", "none"]
+class CircularFillet(_Model):
+    """Constant-radius rolling-ball fillet.  The male root treatment in the
+    reference: cylindrical faces on the straight runs, exact circular sweeps at
+    the corners."""
 
+    kind: Literal["circular_fillet"] = "circular_fillet"
+    radius: float = Field(gt=0.0, le=100.0, description="fillet radius, mm")
 
-class EdgeTreatment(_Model):
-    style: BlendStyle = "g2_quintic"
-    size: float = Field(default=0.0, ge=0.0, le=100.0, description="setback, mm")
+    @property
+    def size(self) -> float:
+        return self.radius
+
+    @property
+    def blend_style(self) -> str:
+        return "circular"
 
     @property
     def active(self) -> bool:
-        return self.style != "none" and self.size > 0.0
+        return True
+
+
+class G2QuinticBlend(_Model):
+    """The reference's curvature-continuous blend, given by its setback."""
+
+    kind: Literal["g2_quintic_blend"] = "g2_quintic_blend"
+    setback: float = Field(gt=0.0, le=100.0, description="setback from the sharp edge, mm")
+
+    @property
+    def size(self) -> float:
+        return self.setback
+
+    @property
+    def blend_style(self) -> str:
+        return "g2_quintic"
+
+    @property
+    def active(self) -> bool:
+        return True
+
+
+class ChamferTreatment(_Model):
+    kind: Literal["chamfer"] = "chamfer"
+    distance: float = Field(gt=0.0, le=100.0, description="chamfer distance, mm")
+
+    @property
+    def size(self) -> float:
+        return self.distance
+
+    @property
+    def blend_style(self) -> str:
+        return "chamfer"
+
+    @property
+    def active(self) -> bool:
+        return True
+
+
+class NoTreatment(_Model):
+    kind: Literal["none"] = "none"
+
+    @property
+    def size(self) -> float:
+        return 0.0
+
+    @property
+    def blend_style(self) -> str:
+        return "none"
+
+    @property
+    def active(self) -> bool:
+        return False
+
+
+EdgeTreatmentSpec = Annotated[
+    Union[CircularFillet, G2QuinticBlend, ChamferTreatment, NoTreatment],
+    Field(discriminator="kind"),
+]
+
+
+class PartSelection(_Model):
+    male: bool = True
+    female: bool = True
 
 
 class MoldParams(_Model):
+    parts: PartSelection = PartSelection()
     flange_width: float = Field(default=30.0, gt=0, le=200)
     base_plate_thickness: float = Field(default=15.0, gt=0, le=100)
     cavity_plate_thickness: float = Field(default=25.0, gt=0, le=300)
 
-    # each treatment is independent and owns its own parameters
-    male_root_blend: EdgeTreatment = EdgeTreatment(style="circular", size=1.2)
-    male_floor_blend: EdgeTreatment = EdgeTreatment(style="g2_quintic", size=5.0)
-    female_entry_blend_top: EdgeTreatment = EdgeTreatment(style="g2_quintic", size=3.0)
-    female_entry_blend_bottom: EdgeTreatment = EdgeTreatment(style="none", size=0.0)
+    # each treatment is independent, semantically typed, and owns its own parameter
+    male_root_blend: EdgeTreatmentSpec = CircularFillet(radius=1.2)
+    male_floor_blend: EdgeTreatmentSpec = G2QuinticBlend(setback=5.0)
+    female_entry_blend_top: EdgeTreatmentSpec = G2QuinticBlend(setback=3.0)
+    female_entry_blend_bottom: EdgeTreatmentSpec = NoTreatment()
 
     plate_edge_chamfer: float = Field(default=0.0, ge=0.0, le=10.0)
     flange_relief_depth: float = Field(default=0.0, ge=0.0, le=20.0)
@@ -251,11 +324,18 @@ class ManufacturingParams(_Model):
     nozzle_diameter: float = Field(default=0.4, gt=0, le=2.0)
 
 
-class ExportParams(_Model):
-    linear_deflection: float = Field(default=0.05, gt=0, le=5.0)
-    angular_deflection: float = Field(default=0.20, gt=0, le=1.5)
-    blend_sections: int = Field(default=48, ge=8, le=256,
-                                description="loft sections per 3D edge treatment")
+class QualityParams(_Model):
+    """Preview and export describe the same geometry; they differ only in loft
+    section density and tessellation tolerance.  Leave the overrides at None to
+    take the mode's measured defaults from `traymold.quality.DEFAULTS`."""
+
+    mode: Literal["preview", "export"] = "export"
+    blend_sections: int | None = Field(default=None, ge=4, le=256,
+                                       description="cap on loft sections per edge treatment")
+    max_section_sagitta: float | None = Field(default=None, gt=0, le=1.0,
+                                              description="target loft chord error, mm")
+    linear_deflection: float | None = Field(default=None, gt=0, le=5.0)
+    angular_deflection: float | None = Field(default=None, gt=0, le=1.5)
 
 
 class Params(_Model):
@@ -267,7 +347,10 @@ class Params(_Model):
     mold: MoldParams = MoldParams()
     features: Features = Features()
     manufacturing: ManufacturingParams = ManufacturingParams()
-    export: ExportParams = ExportParams()
+    quality: QualityParams = QualityParams()
+
+    def with_quality(self, mode: str) -> "Params":
+        return self.model_copy(update={"quality": self.quality.model_copy(update={"mode": mode})})
 
     @model_validator(mode="after")
     def _check_setback(self):

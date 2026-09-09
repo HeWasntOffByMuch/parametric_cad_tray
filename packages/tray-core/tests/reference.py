@@ -105,3 +105,29 @@ def compare_forming_profiles(built, reference, z_built: float, per_edge: int = 3
     a = forming_loop(built, z_built, per_edge=per_edge)
     b = forming_loop(reference, z_built + Z_SHIFT, per_edge=per_edge)
     return deviation(a, b)
+
+
+def surface_deviation(built, reference, z_built: float, n_points: int = 24) -> dict:
+    """True 3D distance from points on the built forming surface to the reference
+    solid, in mm.
+
+    Same-height section comparison is the right metric on a vertical wall but
+    misleading where the surface turns towards horizontal: 0.05 mm below the plug
+    top the profile moves ~60 mm laterally per mm of height, so a 1 um error in
+    the loft's z position reads as 60 um of "profile deviation" while the surface
+    itself is 1 um out.  This measures the surface, not the section.
+    """
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
+    from OCP.BRepExtrema import BRepExtrema_DistShapeShape
+    from OCP.gp import gp_Pnt
+
+    pts = forming_loop(built, z_built, per_edge=120)
+    step = max(1, len(pts) // n_points)
+    out = []
+    for p in pts[::step][:n_points]:
+        v = BRepBuilderAPI_MakeVertex(gp_Pnt(float(p[0]), float(p[1]), float(z_built + Z_SHIFT))).Vertex()
+        d = BRepExtrema_DistShapeShape(v, reference.wrapped)
+        d.Perform()
+        out.append(float(d.Value()))
+    arr = np.asarray(out)
+    return {"min": float(arr.min()), "max": float(arr.max()), "rms": float(np.sqrt((arr**2).mean()))}

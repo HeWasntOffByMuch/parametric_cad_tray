@@ -21,7 +21,11 @@ def forming_gap(params) -> float:
 
 
 def corner_radius_min(params) -> float:
-    """Tightest radius of curvature anywhere on the base profile, mm."""
+    """Tightest radius of curvature on the base profile's CONVEX regions, mm.
+
+    This bounds INWARD offsets only - every edge treatment on the male.  It does
+    not bound the forming gap, which is an outward offset; see validate.py.
+    """
     p = params.tray.profile
     return min_curvature_radius_factor(p.corner_style) * p.corner_setback
 
@@ -43,6 +47,8 @@ class Derived:
     closed_height: float
     vertical_wall_height: float
     draft_offset_at_depth: float
+    max_inward_offset: float
+    max_outward_offset: float
 
     def as_dict(self) -> dict:
         return self.__dict__.copy()
@@ -65,4 +71,6 @@ def derive(params) -> Derived:
         - m.male_root_blend.size
         - m.male_floor_blend.size,
         draft_offset_at_depth=params.tray.depth * math.tan(math.radians(params.tray.draft_angle)),
+        max_inward_offset=corner_radius_min(params),
+        max_outward_offset=float("inf"),  # every profile family here is convex
     )

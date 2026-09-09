@@ -30,10 +30,11 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="traymold")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    for name in ("build", "derive"):
+    for name in ("build", "derive", "validate"):
         p = sub.add_parser(name)
         p.add_argument("--preset")
         p.add_argument("--params")
+        p.add_argument("--quality", choices=("preview", "export"), default=None)
         if name == "build":
             p.add_argument("-o", "--outdir", default="out")
 
@@ -53,6 +54,14 @@ def main(argv=None) -> int:
         return 0
 
     params = _load(args)
+    if getattr(args, "quality", None):
+        params = params.with_quality(args.quality)
+    if args.cmd == "validate":
+        from .validate import validate
+
+        diags = validate(params)
+        print(json.dumps([d.__dict__ for d in diags], indent=2))
+        return 1 if any(d.severity == "error" for d in diags) else 0
     if args.cmd == "derive":
         print(json.dumps(derive(params).as_dict(), indent=2))
         return 0
@@ -64,7 +73,9 @@ def main(argv=None) -> int:
     print(json.dumps({
         "name": params.name,
         "seconds": round(elapsed, 2),
+        "quality": params.quality.mode,
         "volumes_cm3": {k: round(v, 3) for k, v in result.volumes.items()},
+        "stats": result.stats,
         "derived": result.derived,
         "written": {k: str(v) for k, v in written.items()},
     }, indent=2))

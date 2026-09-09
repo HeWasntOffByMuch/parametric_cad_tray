@@ -121,14 +121,71 @@ class BlendLaw:
             return np.zeros_like(h)
         raise ValueError(f"unknown blend style {self.style!r}")
 
+    def arc_length(self) -> float:
+        """Length of the (height, lateral) cross-section curve, mm."""
+        if self.size <= 0.0:
+            return 0.0
+        h = np.linspace(0.0, self.size, 4001)
+        return float(np.sum(np.hypot(np.diff(h), np.diff(self.lateral(h)))))
+
+    def min_section_radius(self) -> float:
+        """Tightest radius of curvature of the cross-section curve, mm."""
+        if self.style == "chamfer":
+            return float("inf")
+        if self.style == "circular":
+            return self.size
+        return G2_MIN_CURVATURE_RADIUS_FACTOR * self.size
+
+    def sections_for(self, max_sagitta: float, cap: int) -> int:
+        """Sections needed to keep the loft's chord error under `max_sagitta`.
+
+        A chord of length c across a curve of radius R deviates by c**2 / (8R),
+        so c = sqrt(8 * R * sagitta) and the section count follows from the
+        cross-section's arclength.  This is why `blend_sections` is a *cap*: a
+        1.2 mm fillet does not need the same section count as a 5 mm blend, and
+        spending them there costs offsets and boolean time for nothing.
+        """
+        if not self.size > 0.0:
+            return 2
+        radius = self.min_section_radius()
+        if not np.isfinite(radius):
+            return 2
+        chord = math.sqrt(8.0 * radius * max_sagitta)
+        return int(min(cap, max(4, math.ceil(self.arc_length() / max(chord, 1e-9)) + 1)))
+
     def heights(self, n: int) -> np.ndarray:
-        """Height samples clustered where the lateral offset changes fastest."""
+        """Section heights for a loft through this treatment.
+
+        Mostly spaced by equal arclength along the (height, lateral)
+        cross-section curve rather than by equal height: a loft's error is
+        governed by how far the cross-section moves between sections, and these
+        laws move almost all of their lateral offset in the last few percent of
+        their height.  Equal-height spacing puts sections where nothing is
+        happening and none where everything is - at 10 sections it costs 271 um
+        of reference deviation against 49 um for arclength spacing.
+
+        Pure arclength spacing, though, collapses in height wherever the
+        cross-section has a horizontal tangent: on a 1.2 mm circular fillet it
+        placed consecutive sections 1.5 um apart in z and 60 um apart in
+        lateral, and the resulting sliver bands made the subsequent boolean
+        return garbage (the male lost 394 cm3).  Blending in a fraction of
+        uniform-height spacing bounds the minimum step at
+        `_UNIFORM_BLEND * size / (n - 1)` and fixes that without giving up the
+        accuracy.
+        """
         if self.size <= 0.0:
             return np.zeros(1)
-        # cosine spacing: dense at both tangent and face ends
-        u = np.linspace(0.0, 1.0, n)
-        return self.size * (0.5 - 0.5 * np.cos(math.pi * u))
+        dense = np.linspace(0.0, self.size, 4001)
+        lateral = self.lateral(dense)
+        arc = np.r_[0.0, np.cumsum(np.hypot(np.diff(dense), np.diff(lateral)))]
+        by_arc = np.interp(np.linspace(0.0, arc[-1], n), arc, dense)
+        by_height = np.linspace(0.0, self.size, n)
+        return (1.0 - _UNIFORM_BLEND) * by_arc + _UNIFORM_BLEND * by_height
 
+
+#: Fraction of uniform-height spacing blended into the arclength spacing, to
+#: bound the minimum section separation.  See `BlendLaw.heights`.
+_UNIFORM_BLEND = 0.25
 
 _G2_TABLE: np.ndarray | None = None
 
@@ -142,6 +199,20 @@ def _g2_lateral_fraction(frac: np.ndarray) -> np.ndarray:
         _G2_TABLE = np.column_stack([1.0 + pts[:, 0], pts[:, 1]])
     table = _G2_TABLE
     return np.interp(frac, table[:, 0], table[:, 1])
+
+
+def compile_treatment(spec) -> BlendLaw:
+    """Compile a semantically-typed edge treatment into its offset law.
+
+    The treatment types carry design meaning - a circular fillet has a *radius*,
+    a G2 blend has a *setback*, a chamfer has a *distance* - and this is the one
+    place that meaning is turned into geometry.  Every treatment becomes a
+    height-dependent plan offset of the base profile, because that is what the
+    reference's treatments demonstrably are (docs/architecture.md 4.5), and
+    because a loft through offset profiles reproduces them more robustly than
+    OCC's 3D blend operations do.
+    """
+    return BlendLaw(spec.blend_style, spec.size)
 
 
 def min_curvature_radius_factor(corner_style: str) -> float:

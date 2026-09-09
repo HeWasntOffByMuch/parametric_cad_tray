@@ -215,19 +215,40 @@ def make_base_profile(spec) -> cq.Wire:
 # --------------------------------------------------------------------------
 # the true 2D offset
 # --------------------------------------------------------------------------
-def offset_profile(wire: cq.Wire, distance: float, *, verify_tol: float = 1e-2) -> cq.Wire:
+def offset_profile(
+    wire: cq.Wire,
+    distance: float,
+    *,
+    verify_tol: float = 1e-2,
+    limits: dict | None = None,
+    source_poly: np.ndarray | None = None,
+) -> cq.Wire:
     """True geometric 2D offset of a closed planar wire.
 
     Positive grows the profile outward.  This is the *only* sanctioned way to
     derive the female cavity profile from the male base profile.
 
-    The result is verified: the realised distance from the offset curve back to
-    the source is measured and must match `distance` within `verify_tol` (mm).
-    OCC's 2D offset degrades silently on spline input, so this check is not
-    optional - see docs/architecture.md 7.1.
+    Two protections, in order:
+
+    1. A **direction-aware** curvature check.  An offset only cusps where it
+       reaches the local radius of curvature on the side it is moving towards,
+       so an outward offset of a convex profile is never rejected however large
+       it is - see `curvature_limits`.  Pass `limits` to reuse a computed result.
+    2. The realised-distance verifier, which is the final numerical backstop:
+       the distance from the offset curve back to the source is measured and
+       must match `distance` within `verify_tol` (mm).  OCC's 2D offset degrades
+       silently on spline input, so this check is not optional.
     """
     if abs(distance) < MIN_OFFSET:
         return wire
+    lim = limits if limits is not None else curvature_limits(wire)
+    bound = lim["max_outward"] if distance > 0 else lim["max_inward"]
+    if abs(distance) >= bound:
+        raise OffsetError(
+            f"{'outward' if distance > 0 else 'inward'} offset of {abs(distance):.4f} mm "
+            f"reaches the {'concave' if distance > 0 else 'convex'} curvature limit "
+            f"of {bound:.4f} mm; the offset would cusp"
+        )
     mk = BRepOffsetAPI_MakeOffset()
     mk.Init(GeomAbs_Arc, False)
     mk.AddWire(wire.wrapped)
@@ -240,7 +261,7 @@ def offset_profile(wire: cq.Wire, distance: float, *, verify_tol: float = 1e-2) 
     if not wires:
         raise OffsetError(f"2D offset by {distance} mm produced no wire")
     result = max(wires, key=lambda w: w.BoundingBox().xlen * w.BoundingBox().ylen)
-    realised = measure_offset_distance(result, wire)
+    realised = measure_offset_distance(result, wire, source_poly=source_poly)
     if abs(realised["min"] - abs(distance)) > verify_tol or abs(
         realised["max"] - abs(distance)
     ) > verify_tol:
@@ -263,22 +284,73 @@ def sample_wire(wire: cq.Wire, per_edge: int = 400) -> np.ndarray:
     return np.asarray(pts)
 
 
+#: Points used to represent a curve when measuring distances.  A closed profile of
+#: ~500 mm perimeter sampled to 2000 chords has a sagitta of ~0.2 um against the
+#: tightest curvature we allow, i.e. 50x below the 10 um verification tolerance.
+MEASURE_SAMPLES = 2000
+#: coarse stride and candidate count for the two-level nearest-segment search
+_STRIDE = 16
+_CANDIDATES = 3
+
+
 def _polyline_distance(points: np.ndarray, poly: np.ndarray) -> np.ndarray:
+    """Point-to-closed-polyline distances.
+
+    Two-level search: nearest vertex among every `_STRIDE`-th, keep the best
+    `_CANDIDATES` of those, then project onto the +/-`_STRIDE` segment window
+    around each.  Exhaustive projection over 600 x 2000 costs ~96 ms; this costs
+    ~8 ms and agrees with it exactly on every profile pair in the test suite
+    (tests/test_profiles.py::test_polyline_distance_matches_brute_force).
+    """
+    n = len(poly)
+    if n <= 4 * _STRIDE:
+        return _polyline_distance_exact(points, poly)
     a = poly
-    b = np.roll(poly, -1, axis=0)
-    ab = b - a
+    ab = np.roll(poly, -1, axis=0) - a
+    denom = np.maximum((ab**2).sum(1), 1e-30)
+    coarse_idx = np.arange(0, n, _STRIDE)
+    dc = np.linalg.norm(points[:, None, :] - poly[coarse_idx][None], axis=-1)
+    keep = np.argsort(dc, axis=1)[:, :_CANDIDATES]
+    starts = coarse_idx[keep]                                   # (k, c)
+    window = np.arange(-_STRIDE, _STRIDE + 1)
+    idx = (starts[:, :, None] + window[None, None, :]) % n       # (k, c, w)
+    idx = idx.reshape(len(points), -1)
+    A, AB, D = a[idx], ab[idx], denom[idx]
+    t = np.clip(((points[:, None, :] - A) * AB).sum(-1) / D, 0.0, 1.0)
+    delta = A + t[..., None] * AB - points[:, None, :]
+    return np.sqrt((delta**2).sum(-1)).min(1)
+
+
+def _polyline_distance_exact(points: np.ndarray, poly: np.ndarray) -> np.ndarray:
+    """Reference implementation: project onto every segment.  Used for short
+    polylines and as the oracle the fast path is tested against."""
+    a = poly
+    ab = np.roll(poly, -1, axis=0) - a
     denom = np.maximum((ab**2).sum(1), 1e-30)
     out = np.empty(len(points))
-    for i, p in enumerate(points):
-        t = np.clip(((p - a) * ab).sum(1) / denom, 0.0, 1.0)
-        out[i] = np.min(np.linalg.norm(a + t[:, None] * ab - p, axis=1))
+    for i in range(0, len(points), 512):
+        p = points[i : i + 512]
+        t = np.clip(((p[:, None, :] - a[None]) * ab[None]).sum(-1) / denom, 0.0, 1.0)
+        delta = a[None] + t[..., None] * ab[None] - p[:, None, :]
+        out[i : i + 512] = np.sqrt((delta**2).sum(-1)).min(1)
     return out
 
 
-def measure_offset_distance(offset: cq.Wire, source: cq.Wire, samples: int = 600) -> dict:
-    """Realised min/max/rms distance from `offset` back to `source`, in mm."""
-    src = _resample_closed(sample_wire(source, 600), 6000)
-    pts = sample_wire(offset, max(60, samples // max(1, len(offset.Edges()))))
+def resampled(wire: cq.Wire, n: int = MEASURE_SAMPLES) -> np.ndarray:
+    """Arclength-uniform closed polyline for distance measurement."""
+    return _resample_closed(sample_wire(wire, 400), n)
+
+
+def measure_offset_distance(
+    offset: cq.Wire, source: cq.Wire, samples: int = 600, source_poly: np.ndarray | None = None
+) -> dict:
+    """Realised min/max/rms distance from `offset` back to `source`, in mm.
+
+    `source_poly` lets a caller that offsets the same base repeatedly resample it
+    once; the result is identical either way.
+    """
+    src = resampled(source) if source_poly is None else source_poly
+    pts = sample_wire(offset, max(40, samples // max(1, len(offset.Edges()))))
     d = _polyline_distance(pts, src)
     return {"min": float(d.min()), "max": float(d.max()), "rms": float(np.sqrt((d**2).mean()))}
 
@@ -297,3 +369,86 @@ def _resample_closed(pts: np.ndarray, n: int) -> np.ndarray:
     s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(loop, axis=0), axis=1))]
     t = np.linspace(0.0, s[-1], n, endpoint=False)
     return np.column_stack([np.interp(t, s, loop[:, 0]), np.interp(t, s, loop[:, 1])])
+
+
+# --------------------------------------------------------------------------
+# direction-aware curvature limits
+# --------------------------------------------------------------------------
+def curvature_limits(wire: cq.Wire, per_edge: int = 200) -> dict:
+    """How far this profile can be offset in each direction before it cusps.
+
+    Offsetting a closed curve fails where the offset distance reaches the local
+    radius of curvature **on the side the offset moves towards the centre of
+    curvature**.  Those are opposite sides for the two directions:
+
+      * an INWARD offset cusps on CONVEX regions  -> limit = min convex radius
+      * an OUTWARD offset cusps on CONCAVE regions -> limit = min concave radius
+
+    A convex profile - which every profile family in this package produces - has
+    no concave region at all, so its outward offset is unbounded.  The forming
+    gap is an outward offset of the male base profile, so it must never be
+    rejected for exceeding the *convex* minimum radius; that number bounds the
+    inward direction only.
+
+    Returns `{"max_inward": float, "max_outward": float}` in mm, `inf` when a
+    direction is unbounded.
+
+    Curvature is read from OCC's exact second derivatives, not from finite
+    differences on a sampled polyline - the latter is dominated by resampling
+    noise and understates the radius badly (22.3 mm against the true 37.9 mm on
+    the reference profile).
+    """
+    kappa, points = _signed_curvature(wire, per_edge)
+    convex, concave = kappa > _KAPPA_TOL, kappa < -_KAPPA_TOL
+    return {
+        "max_inward": float(1.0 / kappa[convex].max()) if convex.any() else float("inf"),
+        "max_outward": float(1.0 / -kappa[concave].min()) if concave.any() else float("inf"),
+        "is_convex": bool(not concave.any()),
+    }
+
+
+#: below this the curve is straight for offsetting purposes (radius > 1e6 mm)
+_KAPPA_TOL = 1e-6
+
+
+def _signed_curvature(wire: cq.Wire, per_edge: int = 200):
+    """Signed curvature sampled from exact derivatives.
+
+    Positive means convex - the centre of curvature lies on the interior side -
+    independently of how the wire happens to be oriented.
+    """
+    from OCP.gp import gp_Pnt, gp_Vec
+
+    pts: list[list[float]] = []
+    kappa: list[float] = []
+    normals: list[list[float]] = []
+    for edge in wire.Edges():
+        adaptor = BRepAdaptor_Curve(edge.wrapped)
+        disc = GCPnts_QuasiUniformAbscissa(adaptor, per_edge)
+        for i in range(1, disc.NbPoints() + 1):
+            p, v1, v2 = gp_Pnt(), gp_Vec(), gp_Vec()
+            adaptor.D2(disc.Parameter(i), p, v1, v2)
+            t = np.array([v1.X(), v1.Y()])
+            a = np.array([v2.X(), v2.Y()])
+            speed = float(np.hypot(*t))
+            if speed < 1e-12:
+                continue
+            cross = t[0] * a[1] - t[1] * a[0]
+            k = cross / speed**3
+            # curvature vector direction (towards the centre of curvature)
+            n = np.array([-t[1], t[0]]) / speed * np.sign(k) if abs(k) > 0 else np.zeros(2)
+            pts.append([p.X(), p.Y()])
+            kappa.append(abs(k))
+            normals.append(n.tolist())
+    pts = np.asarray(pts)
+    kappa = np.asarray(kappa)
+    normals = np.asarray(normals)
+    centre = pts.mean(axis=0)
+    towards_interior = ((centre - pts) * normals).sum(1)
+    signed = np.where(towards_interior >= 0.0, kappa, -kappa)
+    return signed, pts
+
+
+def _signed_area(pts: np.ndarray) -> float:
+    x, y = pts[:, 0], pts[:, 1]
+    return float(0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))

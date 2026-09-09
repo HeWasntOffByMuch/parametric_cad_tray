@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from .params import (
+    CircularFillet,
     ClampHoles,
-    EdgeTreatment,
     Features,
     FitParams,
+    G2QuinticBlend,
     G2QuinticObroundProfile,
     LeatherParams,
     MoldParams,
+    NoTreatment,
     Params,
     PryNotches,
     TrayParams,
@@ -31,10 +33,10 @@ REF_4X7 = Params(
         flange_width=30.0,
         base_plate_thickness=15.0,
         cavity_plate_thickness=25.0,
-        male_root_blend=EdgeTreatment(style="circular", size=1.2),
-        male_floor_blend=EdgeTreatment(style="g2_quintic", size=5.0),
-        female_entry_blend_top=EdgeTreatment(style="g2_quintic", size=3.0),
-        female_entry_blend_bottom=EdgeTreatment(style="none", size=0.0),
+        male_root_blend=CircularFillet(radius=1.2),
+        male_floor_blend=G2QuinticBlend(setback=5.0),
+        female_entry_blend_top=G2QuinticBlend(setback=3.0),
+        female_entry_blend_bottom=NoTreatment(),
     ),
     features=Features(
         clamp_holes=ClampHoles(

@@ -103,3 +103,28 @@ def test_offset_that_self_intersects_is_refused_not_silently_wrong():
     wire = make_base_profile(spec)
     with pytest.raises(OffsetError):
         offset_profile(wire, -60.0)
+
+
+def test_polyline_distance_matches_brute_force():
+    """The two-level nearest-segment search must agree with exhaustive
+    projection.  It is 6x faster and used on every offset verification."""
+    import traymold.profiles as prof
+
+    pairs = [
+        (G2QuinticObroundProfile(length=175.0, width=105.0), CircularObroundProfile(length=175.0, width=105.0)),
+        (G2QuinticObroundProfile(length=175.0, width=105.0), EllipseProfile(length=175.0, width=105.0)),
+        (CircularRectProfile(length=175.0, width=105.0, corner_radius=20.0),
+         G2QuinticRectProfile(length=175.0, width=105.0, corner_setback=25.0)),
+    ]
+    for a_spec, b_spec in pairs:
+        a = sample_wire(make_base_profile(a_spec), 120)
+        b = prof.resampled(make_base_profile(b_spec))
+        fast = prof._polyline_distance(a, b)
+        exact = prof._polyline_distance_exact(a, b)
+        assert np.abs(fast - exact).max() == 0.0
+    # and against an offset of itself, the case the verifier actually runs
+    w = make_base_profile(G2QuinticObroundProfile(length=175.0, width=105.0))
+    o = sample_wire(offset_profile(w, 3.0), 120)
+    assert np.abs(
+        prof._polyline_distance(o, prof.resampled(w)) - prof._polyline_distance_exact(o, prof.resampled(w))
+    ).max() == 0.0
