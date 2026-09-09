@@ -122,8 +122,14 @@ header .experimental { margin: 0; color: var(--text-2); font-size: 12px; white-s
 /* -- panels -------------------------------------------------------------- */
 .params, .info {
   overflow-y: auto;
+  /* Reserve the scrollbar's width whether or not it is showing. A classic
+     scrollbar is laid out inside the padding box, so without this the right
+     padding is spent on it and every control ends up jammed against the track -
+     and only on the platforms that draw one, which is not somewhere to leave a
+     difference. */
+  scrollbar-gutter: stable;
   background: var(--surface);
-  padding: var(--s4) var(--s4) var(--s8);
+  padding: var(--s4) var(--s3) var(--s8) var(--s4);
 }
 .params { grid-area: params; border-right: 1px solid var(--line); }
 .info { grid-area: info; border-left: 1px solid var(--line); }
@@ -192,6 +198,7 @@ header .experimental { margin: 0; color: var(--text-2); font-size: 12px; white-s
   padding-right: var(--s2);
   height: var(--control-h);
 }
+.value-box:not(:has(.unit)) { padding-right: 0; }
 .value-box:focus-within { border-color: var(--accent); }
 .value-box input[type="number"] {
   width: 62px;
@@ -311,8 +318,8 @@ fieldset.object legend {
   bottom: var(--s3);
   left: 50%;
   transform: translateX(-50%);
-  padding: var(--s2);
-  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  gap: var(--s6);
   width: max-content;
   max-width: calc(100% - var(--s6));
   /* One row. Wrapping put Reset view on a line of its own and turned a toolbar
@@ -347,6 +354,14 @@ fieldset.object legend {
 }
 
 .control-group { display: flex; align-items: center; gap: var(--s2); }
+/* The secondary action is separated by a rule, not just by more space. */
+.control-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  flex: none;
+  margin: 0 calc(var(--s3) * -1);
+}
 .control-group > .caption {
   color: var(--faint);
   font-size: 10px;

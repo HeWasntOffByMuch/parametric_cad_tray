@@ -60,6 +60,8 @@ export function ViewerControls({
         </div>
       </div>
 
+      <span className="control-divider" aria-hidden="true" />
+
       <button type="button" onClick={onReset}>
         Reset view
       </button>
