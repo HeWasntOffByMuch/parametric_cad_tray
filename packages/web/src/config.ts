@@ -9,6 +9,9 @@
  *   3. `window.__TRAYMOLD_API_BASE__`  editable in the deployed index.html
  *   4. `VITE_API_BASE_URL`          build-time default
  *   5. same origin                  the dev server proxies /api
+ *
+ * An empty candidate is not a choice - it is the absence of one - so each step
+ * falls through on blank as well as on missing.
  */
 const STORAGE_KEY = 'traymold.apiBase'
 
@@ -38,14 +41,33 @@ function fromStorage(): string | null {
   }
 }
 
+/**
+ * The first candidate that actually says something.
+ *
+ * `??` is the wrong operator for this chain. index.html declares
+ * `window.__TRAYMOLD_API_BASE__ = ''` so that the deployed file has a line to
+ * edit - and `'' ?? next` is `''`, because `??` only falls through on null and
+ * undefined. That empty placeholder swallowed the rest of the chain, so the
+ * build-time VITE_API_BASE_URL was never read on the hosted page and every
+ * request went to the page's own origin instead: `/api/schema` on
+ * user.github.io, which is a 404 from the static host. A candidate counts only
+ * if it has something in it.
+ */
+function firstSet(...candidates: (string | null | undefined)[]): string {
+  for (const candidate of candidates) {
+    const value = candidate?.trim()
+    if (value) return value
+  }
+  return ''
+}
+
 export function apiBase(): string {
-  const resolved =
-    fromQuery() ??
-    fromStorage() ??
-    (typeof window !== 'undefined' ? window.__TRAYMOLD_API_BASE__ : '') ??
-    import.meta.env?.VITE_API_BASE_URL ??
-    ''
-  return resolved.replace(/\/$/, '')
+  return firstSet(
+    fromQuery(),
+    fromStorage(),
+    typeof window !== 'undefined' ? window.__TRAYMOLD_API_BASE__ : undefined,
+    import.meta.env?.VITE_API_BASE_URL,
+  ).replace(/\/$/, '')
 }
 
 export function apiUrl(path: string): string {
