@@ -522,7 +522,9 @@ They differ only in loft section density and tessellation tolerance.
 | `max_section_sagitta` | 0.002 mm | 0.05 mm |
 | `blend_sections` cap | 48 | 16 |
 | resolved sections (reference) | 15 / 35 / 28 | 4 / 8 / 7 |
-| linear / angular deflection | 0.05 mm / 0.20 rad | 0.25 mm / 0.50 rad |
+| linear / angular deflection | 0.01 mm / 0.05 rad | 0.10 mm / 0.15 rad |
+| worst facet crease, reference male | 0.21° | 1.33° |
+| triangles / part | 217k | 22k |
 | **section deviation vs STEP** | male 4.16 µm, female 3.05 µm | male 4.16 µm, female 24.77 µm |
 | **3D surface deviation vs STEP** | male 3.06 µm, female 2.67 µm | male 29.87 µm, female 4.65 µm |
 | build (both parts) | 5.43 s | 2.51 s |

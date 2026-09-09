@@ -26,11 +26,28 @@ class Quality:
 
 #: Section counts chosen by measurement, not by feel.  See
 #: docs/architecture.md 7.4 and tests/test_quality_modes.py.
+#:
+#: The deflections are set by the worst *crease* they leave - the angle between
+#: adjacent facet normals around the wall - because that is what the eye reads as
+#: faceting, and what a slicer's flat shading exaggerates.  A linear deflection
+#: alone does not bound it: 0.05 mm of sagitta on this profile's ~52 mm radius is
+#: still a 4.6 mm chord.  Measured on the reference male, per part:
+#:
+#:     preview  0.25 / 0.50   2.5k tri   7.23 deg   0.10 MB glb   <- visibly faceted
+#:     preview  0.10 / 0.15    22k tri   1.33 deg   0.58 MB glb
+#:     export   0.05 / 0.20    15k tri   2.57 deg   0.76 MB stl   <- visible in a slicer
+#:     export   0.02 / 0.10    54k tri   0.96 deg   2.72 MB stl
+#:     export   0.01 / 0.05   217k tri   0.21 deg  10.84 MB stl
+#:
+#: Build time was flat across every row to within noise: meshing is a rounding
+#: error next to the B-rep work, so the old settings bought nothing.  Bandwidth
+#: is the only real cost, which is why preview stops where returns flatten and
+#: export does not.
 DEFAULTS: dict[str, Quality] = {
     "export": Quality("export", blend_sections=48, max_section_sagitta=0.002,
-                      linear_deflection=0.05, angular_deflection=0.20),
+                      linear_deflection=0.01, angular_deflection=0.05),
     "preview": Quality("preview", blend_sections=16, max_section_sagitta=0.05,
-                       linear_deflection=0.25, angular_deflection=0.50),
+                       linear_deflection=0.10, angular_deflection=0.15),
 }
 
 
