@@ -115,9 +115,31 @@ case "$code" in
 esac
 
 # --- a real build, watched over SSE -----------------------------------------
+# The SSE check below can only see a build that actually runs, and the artifact
+# cache is content-addressed and survives redeploys - so the preset's own
+# preview is usually already there, arrives complete in one frame, and the
+# buffering check fails for a reason that has nothing to do with the proxy.
+# Nudging one dimension by under a millimetre guarantees a real build to watch.
+# The export further down deliberately keeps the untouched preset, so nothing
+# here can look like a custom mold to the usage counter.
+preview_params="$(printf %s "$params" | python3 -c 'import json,sys,time
+d = json.load(sys.stdin)
+try:
+    profile = d["tray"]["profile"]
+    profile["length"] = round(profile["length"] + (int(time.time()) % 1000) * 0.001, 3)
+except Exception:
+    pass                      # an unexpected shape falls back to the preset
+print(json.dumps(d))' 2>/dev/null)"
+[ -n "$preview_params" ] || preview_params="$params"
+# A jitter the core would reject is worse than no jitter at all. A 422 makes
+# curl fail, which empties the response and falls back just the same.
+checked="$(curl -fsS --max-time 20 -X POST "$BASE/api/validate" \
+            -H 'content-type: application/json' -d "{\"params\":$preview_params}" 2>/dev/null)"
+[ "$(printf %s "$checked" | jget valid)" = "True" ] || preview_params="$params"
+
 step "preview build"
 job="$(curl -fsS --max-time 30 -X POST "$BASE/api/preview" \
-        -H 'content-type: application/json' -d "{\"params\":$params}")"
+        -H 'content-type: application/json' -d "{\"params\":$preview_params}")"
 job_id="$(printf %s "$job" | jget id)"
 if [ -z "$job_id" ]; then
   bad "POST /api/preview did not return a job" "$job"
@@ -143,9 +165,15 @@ else
   else
     bad "no completion event on the stream" "$(head -c 400 "$sse")"
   fi
-  grep -q '^event: running$' "$sse" \
-    && ok "intermediate 'running' event arrived before it (the proxy is not buffering)" \
-    || bad "no intermediate event: the proxy is buffering the stream" "check flush_interval -1 in the Caddyfile"
+  if [ "$(printf %s "$job" | jget cached)" = "True" ]; then
+    # Nothing ran, so there was no intermediate state to emit. Not a pass and
+    # not a failure: the proxy was not exercised.
+    printf '  \033[33mskip\033[0m  buffering check: this preview was served from cache\n'
+  else
+    grep -q '^event: running$' "$sse" \
+      && ok "intermediate 'running' event arrived before it (the proxy is not buffering)" \
+      || bad "no intermediate event: the proxy is buffering the stream" "check flush_interval -1 in the Caddyfile"
+  fi
   rm -f "$sse"
 
   final="$(curl -fsS --max-time 20 "$BASE/api/jobs/$job_id")"
@@ -185,7 +213,7 @@ fi
 step "artifact cache"
 t0=$(python3 -c 'import time;print(time.time())')
 again="$(curl -fsS --max-time 30 -X POST "$BASE/api/preview" \
-          -H 'content-type: application/json' -d "{\"params\":$params}")"
+          -H 'content-type: application/json' -d "{\"params\":$preview_params}")"
 ms="$(python3 -c "import sys;print(round((__import__('time').time()-$t0)*1000))")"
 if [ "$(printf %s "$again" | jget cached)" = "True" ]; then
   ok "the identical request was served from cache in ${ms} ms"
@@ -194,8 +222,9 @@ else
       "state=$(printf %s "$again" | jget state) - is the artifacts volume mounted?"
 fi
 
-# Read before the download below, compared after it: this script only ever
-# builds an untouched preset, which must never count as a custom mold.
+# Read before the download below, compared after it. The only thing this script
+# ever *downloads* is the untouched preset's export, which must never count as a
+# custom mold; the jittered preview above is a GLB, which never counts either.
 before="$(curl -fsS --max-time 15 "$BASE/api/stats" 2>/dev/null | jget custom_molds_generated)"
 
 step "export"
