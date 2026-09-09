@@ -188,23 +188,38 @@ jobs:
           PORT: ${{ secrets.VPS_PORT }}
           DIR: ${{ vars.VPS_APP_DIR }}
         run: |
-          DIR="${DIR:-/opt/traymold}"
+          SSH="ssh -i $HOME/.ssh/id_deploy -p ${PORT:-22} $USER@$HOST"
+
+          # Default into the deploy user's own home. /opt is the conventional
+          # place for this, but it is root-owned, and the deploy user is
+          # deliberately not in sudoers - defaulting there makes the first deploy
+          # fail on a permission the workflow has no way to acquire.
+          if [ -z "${DIR:-}" ]; then
+            DIR="$($SSH 'echo "$HOME"')/traymold"
+          fi
+          echo "deploying to $DIR"
+          echo "APP_DIR=$DIR" >> "$GITHUB_ENV"
+
+          if ! out="$($SSH "mkdir -p '$DIR'" 2>&1)"; then
+            echo "$out"
+            echo "::error::Cannot create $DIR as $USER. Either set the VPS_APP_DIR variable to a path this user owns, or on the VPS run: sudo mkdir -p '$DIR' && sudo chown $USER '$DIR'"
+            exit 1
+          fi
+
           # tar over ssh rather than rsync or scp -r: tar is on every host, and
           # this ships the deploy directory only, never the repository.
-          tar -cz -C deploy . \
-            | ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" "$USER@$HOST" \
-                "mkdir -p '$DIR' && tar -xz -C '$DIR'"
+          tar -cz -C deploy . | $SSH "tar -xz -C '$DIR'"
 
       - name: Pull and restart
         env:
           HOST: ${{ secrets.VPS_HOST }}
           USER: ${{ secrets.VPS_USER }}
           PORT: ${{ secrets.VPS_PORT }}
-          DIR: ${{ vars.VPS_APP_DIR }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
         run: |
-          DIR="${DIR:-/opt/traymold}"
+          # APP_DIR is resolved once, by the previous step.
+          DIR="$APP_DIR"
           SSH="ssh -i $HOME/.ssh/id_deploy -p ${PORT:-22} $USER@$HOST"
 
           # Piped, so the token never appears in the remote process arguments.

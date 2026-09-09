@@ -121,9 +121,19 @@ takes out the container rather than the host.
    waiting for a certificate it cannot obtain.
 4. **Ports 80 and 443 open.** Port 80 is not optional: the ACME HTTP challenge
    uses it.
-5. Nothing else. The workflow creates `/opt/traymold` and puts the compose file,
-   the Caddyfile and the `.env` there itself. The repository is never cloned on
-   the VPS, and no source ships in the image beyond the two Python packages.
+5. Nothing else. The workflow creates `~/traymold` in the deploy user's home and
+   puts the compose file, the Caddyfile and the `.env` there itself. The
+   repository is never cloned on the VPS, and no source ships in the image beyond
+   the two Python packages.
+
+   `/opt/traymold` is the conventional place for a service like this, and the
+   workflow will use it — but it is root-owned and the deploy user is
+   deliberately not in sudoers, so it has to be handed over once by hand:
+   ```bash
+   sudo mkdir -p /opt/traymold && sudo chown deploy:deploy /opt/traymold
+   ```
+   then set the `VPS_APP_DIR` variable to `/opt/traymold`. The home directory
+   default needs none of that, which is why it is the default.
 
 ### The SSH key
 
@@ -166,7 +176,7 @@ long-lived registry credential is stored on the host.
 | `TRAYMOLD_TLS_EMAIL` | `you@example.com` | api |
 | `TRAYAPI_ALLOWED_ORIGINS` | `https://hewasntoffbymuch.github.io` | api |
 | `VPS_SSH_HOST_KEY` | output of `ssh-keyscan` | api |
-| `VPS_APP_DIR` | defaults to `/opt/traymold` | api |
+| `VPS_APP_DIR` | defaults to `~/traymold` in the deploy user's home; set it only for a path you have already chowned to that user | api |
 | `TRAYAPI_WORKERS` | defaults to `2` | api |
 | `TRAYMOLD_MEMORY_LIMIT` | defaults to `3g` | api |
 | `TRAYMOLD_API_BASE_URL` | only if the API is not plain https on `TRAYMOLD_API_DOMAIN` | pages |
@@ -219,7 +229,7 @@ that window nothing needs rebuilding. To pin by hand:
 
 ```bash
 ssh deploy@your.vps
-cd /opt/traymold
+cd ~/traymold          # or $VPS_APP_DIR, if you set one
 sed -i 's|/api:.*|/api:<sha>|' .env
 docker compose --env-file .env up -d --wait
 ```
