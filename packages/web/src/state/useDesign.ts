@@ -83,6 +83,13 @@ export interface DesignOptions {
   autoPreview?: boolean
   validateDebounceMs?: number
   previewIdleMs?: number
+  /**
+   * Last word on every document before it becomes state, wherever it came from -
+   * an edit, a preset, a restored link. `App` passes the conflict resolver
+   * through here rather than calling it at each of those three sites, so a
+   * fourth one cannot be added that skips it.
+   */
+  settle?: (params: Json) => Json
 }
 
 export interface DesignState {
@@ -118,7 +125,11 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     autoPreview = true,
     validateDebounceMs = VALIDATE_DEBOUNCE_MS,
     previewIdleMs = PREVIEW_IDLE_MS,
+    settle,
   } = options
+  const settleRef = useRef(settle)
+  settleRef.current = settle
+  const accept = useCallback((next: Json) => settleRef.current?.(next) ?? next, [])
   const [params, setParamsState] = useState<Json>(initial ?? {})
   const [validation, setValidation] = useState<ValidateResponse | null>(null)
   const [validating, setValidating] = useState(false)
@@ -161,8 +172,8 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
   const validateAbort = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    if (initial) setParamsState(initial)
-  }, [initial])
+    if (initial) setParamsState(accept(initial))
+  }, [initial, accept])
 
   // -- validation: cheap, on every meaningful change ------------------------
   useEffect(() => {
@@ -325,24 +336,24 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
 
   const setParams = useCallback(
     (next: Json) => {
-      setParamsState(next)
+      setParamsState(accept(next))
       // Typing schedules a regeneration after the idle pause; it never starts one
       // per keystroke. A commit (blur, Enter, slider release) short-circuits the
       // wait because the user has finished with that control.
       scheduleIdlePreview()
     },
-    [scheduleIdlePreview],
+    [scheduleIdlePreview, accept],
   )
 
   const replaceParams = useCallback(
     (next: Json) => {
-      setParamsState(next)
+      setParamsState(accept(next))
       setPreviewedFingerprint(null)
       setPreviewUrls(EMPTY_URLS)
       setPreviewState('empty')
       scheduleIdlePreview()
     },
-    [scheduleIdlePreview],
+    [scheduleIdlePreview, accept],
   )
 
   useEffect(

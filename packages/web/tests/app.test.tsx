@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../src/App'
-import { FakeBackend, noEventSource } from './harness'
+import { FakeBackend, REF_PARAMS, noEventSource } from './harness'
 
 let backend: FakeBackend
 
@@ -198,6 +198,100 @@ describe('a parameter the backend will not accept', () => {
     await boot()
     await settleValidation()
     expect(await screen.findByTestId('blocking-more')).toHaveTextContent('+1 more')
+  })
+})
+
+describe('a combination the backend cannot build', () => {
+  /**
+   * The instruction this came from: "if there is an error that can be avoided
+   * by disabling/changing some setting... do not show some root blend setting
+   * can't work with some profile, just disallow it or handle gracefully."
+   *
+   * So an ellipse does not produce an error about the root blend. It turns the
+   * root blend off as part of the same change, and the picker stops offering
+   * the ones that cannot be built while the ellipse is selected.
+   */
+  const pickProfile = async (name: RegExp) => {
+    const user = userEvent.setup()
+    await user.click(screen.getByLabelText('Profile type'))
+    await user.click(await screen.findByRole('option', { name }))
+  }
+
+  /** Options of one listbox. Two are open-able on this page, and `getAllByRole`
+   *  would happily mix them. */
+  const optionsOf = (label: string) => {
+    // By role, not by label: an open listbox carries the same accessible name
+    // as the button that controls it.
+    const combobox = screen.getByRole('combobox', { name: label })
+    const list = document.getElementById(combobox.getAttribute('aria-controls') ?? '')
+    return list ? [...list.querySelectorAll('[role=option]')] : []
+  }
+
+  it('settles the conflicting setting instead of reporting it', async () => {
+    await boot()
+    await settleValidation()
+    expect(screen.getByLabelText('Male root blend type')).toHaveTextContent(/rounded/i)
+
+    await pickProfile(/^Ellipse/)
+    await settleValidation()
+
+    expect(screen.getByLabelText('Male root blend type')).toHaveTextContent(/none/i)
+    expect(screen.queryByTestId('blocking-error')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /update preview/i })).toBeEnabled()
+    expect(screen.getByTestId('export-button')).toBeEnabled()
+  })
+
+  it('never sends the combination to the backend at all', async () => {
+    await boot()
+    await settleValidation()
+    backend.validateCalls.length = 0
+
+    await pickProfile(/^Ellipse/)
+    await settleValidation()
+
+    expect(backend.validateCalls.length).toBeGreaterThan(0)
+    for (const params of backend.validateCalls) {
+      const profile = (params as any).tray.profile.kind
+      const blend = (params as any).mold.male_root_blend.kind
+      expect(profile === 'ellipse' && blend !== 'none').toBe(false)
+    }
+  })
+
+  it('greys out what cannot be built, with the reason, and only while it applies', async () => {
+    const user = userEvent.setup()
+    await boot()
+    await settleValidation()
+
+    // Before: every treatment is offered.
+    await user.click(screen.getByLabelText('Male root blend type'))
+    const before = optionsOf('Male root blend type')
+    expect(before.length).toBeGreaterThan(1)
+    expect(before.filter((o) => o.getAttribute('aria-disabled') === 'true')).toHaveLength(0)
+    await user.keyboard('{Escape}')
+
+    await pickProfile(/^Ellipse/)
+    await settleValidation()
+
+    await user.click(screen.getByLabelText('Male root blend type'))
+    const options = optionsOf('Male root blend type')
+    expect(options).toHaveLength(before.length)
+    const off = options.filter((o) => o.getAttribute('aria-disabled') === 'true')
+    expect(off).toHaveLength(options.length - 1)
+    expect(off[0]).toHaveTextContent(/not available on an ellipse/i)
+    expect(options.find((o) => o.getAttribute('aria-disabled') !== 'true')).toHaveTextContent(/none/i)
+  })
+
+  it('applies to a restored design too, not only to a click', async () => {
+    // A shared link can carry any pair; it must not open into a broken state.
+    const ellipse = structuredClone(REF_PARAMS) as any
+    ellipse.tray.profile = { kind: 'ellipse', length: 175, width: 105 }
+    ellipse.mold.male_root_blend = { kind: 'circular_fillet', radius: 1.2 }
+    window.localStorage.setItem('traymold.design.v1', JSON.stringify(ellipse))
+
+    await boot()
+    await settleValidation()
+    expect(screen.getByLabelText('Male root blend type')).toHaveTextContent(/none/i)
+    expect(screen.queryByTestId('blocking-error')).not.toBeInTheDocument()
   })
 })
 

@@ -142,6 +142,26 @@ dominate a 2.5 s preview. Workers are started and warmed at app startup
 | `export_failure` | `OSError` and friends while writing artifacts |
 | `cancelled` | a cancel arrived before or during the build |
 
+### Combinations, served as constraints rather than errors
+
+`policy.UNSUPPORTED_COMBINATIONS` holds the pairs the kernel cannot build. Each
+is written as a constraint and served in `ui_hints.conflicts`:
+
+```json
+{"code": "E-PROFILE-ROOT-BLEND",
+ "when": {"field": "tray.profile", "kind_in": ["ellipse"]},
+ "field": "mold.male_root_blend", "allowed": ["none"], "fallback": "none",
+ "reason": "Not available on an ellipse - the plug's root-blend fuse returns an empty solid..."}
+```
+
+A UI that reads this never offers the combination, so the matching diagnostic is
+unreachable from the form (see frontend.md §3). It is still raised for every
+other caller — a script, a hand-edited link, an older client — because the form
+is not the only thing that can post a document.
+
+`allowed` is a whitelist, not a list of the treatments that fail: a treatment
+added later is off on that curve until someone has built it there.
+
 ### A body the model will not parse
 
 Every endpoint takes the same `params` model, so one number outside its bounds

@@ -9,6 +9,8 @@ The frontend renders groups in this order and puts anything unlisted into
 frontend change.
 """
 
+from . import policy as _POLICY
+
 UI_HINTS = {
     "groups": [
         {
@@ -127,3 +129,21 @@ UI_HINTS = {
         {"key": "max_inward_offset", "label": "Max inward offset", "unit": "mm", "precision": 2},
     ],
 }
+
+#: Combinations the kernel cannot build, served so the form can stop offering
+#: them instead of letting someone assemble one and then explaining the refusal.
+#: The rules live in `policy` with the diagnostics they also produce for API
+#: callers that are not this form; here they are only reshaped for the wire
+#: (tuples to lists, and without the long `message`, which is written for
+#: someone reading an API response rather than someone using the app).
+UI_HINTS["conflicts"] = [
+    {
+        "code": rule["code"],
+        "when": {"field": rule["when"]["field"], "kind_in": list(rule["when"]["kind_in"])},
+        "field": rule["field"],
+        "allowed": list(rule["allowed"]),
+        "fallback": rule["fallback"],
+        "reason": rule["reason"],
+    }
+    for rule in _POLICY.UNSUPPORTED_COMBINATIONS
+]

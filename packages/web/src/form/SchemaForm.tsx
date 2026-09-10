@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Diagnostic, Json, UiHints } from '../api/types'
 import { BooleanWidget, EnumWidget, NumberWidget, TextWidget, type WidgetProps } from './widgets'
 import { getValue, groupFields, rootFields, setValue, variantDefaults, type Field, type Group } from './schema'
+import { conflictsIn, disallowed } from './conflicts'
 import { Listbox } from './Listbox'
 import { ProfileIcon } from './ProfileIcon'
 import { PROFILE_SHAPES } from './profileShapes'
@@ -129,7 +130,17 @@ function VariantField({ field, exclude, context, hint, ...props }: Props & { fie
   // reason attached - the same rule the enum widget follows. Someone must not
   // be able to pick a shape and only find out it is impossible after waiting
   // for a build to fail.
-  const blocked: Record<string, { reason?: string }> = hint?.disabled_values ?? {}
+  //
+  // Two sources, and the second is why this is not just a hint lookup: some
+  // variants are impossible outright, and some only in combination with what
+  // another field is set to now. An ellipse cannot take a root blend, so with
+  // Ellipse selected the root-blend picker greys out everything but None -
+  // rather than letting someone build the pair and be told to undo it.
+  const keys = (field.variants ?? []).map((v) => v.key)
+  const blocked: Record<string, { reason?: string }> = {
+    ...(hint?.disabled_values ?? {}),
+    ...disallowed(props.value, conflictsIn(props.hints), field.path, keys),
+  }
   return (
     <fieldset className="object variant" data-field={field.path}>
       <legend>{field.title}</legend>

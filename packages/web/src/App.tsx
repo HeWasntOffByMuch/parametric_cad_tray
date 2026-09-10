@@ -3,6 +3,8 @@ import { markEngagedOnce, track } from './analytics'
 import { ApiError, api } from './api/client'
 import type { Json, Preset, SchemaResponse } from './api/types'
 import { SchemaForm } from './form/SchemaForm'
+import { conflictsIn, resolve as resolveConflicts } from './form/conflicts'
+import { fieldIndex } from './form/schema'
 import { DerivedPanel } from './panels/DerivedPanel'
 import { DiagnosticsPanel } from './panels/DiagnosticsPanel'
 import { ExportPanel } from './panels/ExportPanel'
@@ -33,7 +35,24 @@ export function App({ options }: { options?: DesignOptions } = {}) {
   const [initial, setInitial] = useState<Json | null>(null)
   const [source, setSource] = useState<'url' | 'local' | 'default'>('default')
 
-  const [design, actions] = useDesign(initial, options)
+  // Both built once per schema rather than once per keystroke: `settle` runs on
+  // every edit, and walking the whole schema each time would be pure waste.
+  const fields = useMemo(() => (schema ? fieldIndex(schema.json_schema) : null), [schema])
+  const conflicts = useMemo(() => conflictsIn(schema?.ui_hints), [schema])
+
+  /**
+   * Every document that enters the app, with the combinations the kernel cannot
+   * build already settled - see `form/conflicts`. Threaded through `useDesign`
+   * rather than applied at the three call sites (edit, preset, restored link)
+   * so a fourth one cannot be added without it.
+   */
+  const settle = useCallback(
+    (next: Json): Json =>
+      fields ? resolveConflicts(next, conflicts, (path) => fields.get(path)).params : next,
+    [fields, conflicts],
+  )
+
+  const [design, actions] = useDesign(initial, { ...options, settle })
 
   const [partMode, setPartMode] = useState<PartMode>('both')
   const [viewMode, setViewMode] = useState<ViewMode>('assembled')

@@ -26,7 +26,7 @@ export TRAYAPI_CACHE_DIR ?= $(CURDIR)/.cache/artifacts
 #   TRAYMOLD_ANALYTICS_DB= make dev
 export TRAYMOLD_ANALYTICS_DB ?= $(CURDIR)/.cache/analytics/analytics.sqlite3
 
-.PHONY: dev api web install test test-core test-api test-web build clean doctor analytics \
+.PHONY: dev api web install test test-core test-api test-web build clean doctor analytics fixtures \
         deploy-local deploy-local-web deploy-smoke deploy-down deploy-logs deploy-check
 
 install:
@@ -64,6 +64,11 @@ test-api:
 
 test-web:
 	cd $(WEB) && npm run test
+
+## Rewrite the frontend test fixture from the API. Run after any change to the
+## parameter model or the UI hints; `make test-api` checks it is current.
+fixtures:
+	TRAYMOLD_ANALYTICS_DB= $(PY) tools/dump_fixtures.py
 
 ## Read the usage analytics the running API has collected.
 analytics:

@@ -63,40 +63,42 @@ export function PreviewStatus({
 
   return (
     <div className="preview-status" data-testid="preview-status" data-state={state}>
-      <span className={`status-dot ${copy.tone}`} aria-hidden="true" />
-      <span className="status-label" role="status" aria-live="polite">
-        {copy.label}
-      </span>
-      {detail && <span className="detail">{detail}</span>}
-      {percent !== null && (
-        <span className="detail progress-percent" data-testid="progress-percent">
-          {percent}%
+      <div className="status-row">
+        <span className={`status-dot ${copy.tone}`} aria-hidden="true" />
+        <span className="status-label" role="status" aria-live="polite">
+          {copy.label}
         </span>
-      )}
-      {validating && !blocking && <span className="detail">checking…</span>}
-      <span className="spacer" />
-      {state === 'generating' ? (
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-      ) : (
-        <button
-          type="button"
-          // Accented only when there is something to build. Left permanently
-          // blue it competes with Export, which is the action that actually
-          // ends the session.
-          className={canGenerate ? 'primary' : undefined}
-          onClick={onGenerate}
-          disabled={!canGenerate}
-          title={
-            state === 'clean'
-              ? 'The preview already matches these parameters'
-              : 'Build the preview from the current parameters'
-          }
-        >
-          Update preview
-        </button>
-      )}
+        {detail && <span className="detail">{detail}</span>}
+        {percent !== null && (
+          <span className="detail progress-percent" data-testid="progress-percent">
+            {percent}%
+          </span>
+        )}
+        {validating && !blocking && <span className="detail">checking…</span>}
+        <span className="spacer" />
+        {state === 'generating' ? (
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="button"
+            // Accented only when there is something to build. Left permanently
+            // blue it competes with Export, which is the action that actually
+            // ends the session.
+            className={canGenerate ? 'primary' : undefined}
+            onClick={onGenerate}
+            disabled={!canGenerate}
+            title={
+              state === 'clean'
+                ? 'The preview already matches these parameters'
+                : 'Build the preview from the current parameters'
+            }
+          >
+            Update preview
+          </button>
+        )}
+      </div>
       {blocking && (
         <p className="status-problem" data-testid="blocking-error">
           <span className="what" title={`${blocking.field} ${blocking.message}`}>

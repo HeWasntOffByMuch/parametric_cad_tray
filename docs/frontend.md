@@ -194,6 +194,41 @@ stops burning a worker.
 
 Errors block Preview and Export; warnings do not.
 
+### An impossible combination is not an error
+
+Some pairs of settings cannot be built - an elliptical plug takes no root blend,
+because the fuse returns an empty solid on a curve with no straight runs. The
+first version of this reported it: pick Ellipse, wait for the request, and read
+that `mold.male_root_blend` should be set to none. Every part of that is the app
+asking the user to do bookkeeping it had already done.
+
+So the rule is applied rather than announced. `trayapi.policy` writes each one as
+a constraint - `when` a field is one of these kinds, another field is limited to
+`allowed`, otherwise `fallback` - and serves it in `ui_hints.conflicts`.
+`form/conflicts` then does two things:
+
+* **settles the document.** `resolve` runs on everything that becomes state - an
+  edit, a preset, a restored link - and puts the constrained field on its
+  fallback in the same change that made the rule bite. Picking Ellipse turns the
+  root blend off; there is no moment where the pair exists.
+* **stops offering it.** `disallowed` greys out the variants that would break the
+  rule again, with the reason where the one-line description usually goes.
+
+It is threaded through `useDesign`'s `settle` option rather than applied at the
+three call sites, so a fourth cannot be added that skips it. The build is never
+blocked and there is nothing to fix, because the invalid state is unreachable.
+
+The server still refuses the combination, and that is not redundant: the form is
+not the only thing that can post a parameter document. Nobody driving the app
+should ever see that diagnostic, and `test_conflicts` asserts both halves - that
+the fallback satisfies the rule, and that a caller who is not the form is told.
+
+Not every diagnostic can be handled this way. A relation between two numbers -
+`mold.cavity_plate_thickness` must be at least `tray.depth`, the entry blends
+must not meet inside the plate - has no option to grey out; the only ways to make
+it unreachable are to clamp a number someone typed or to silently move a second
+dimension. Those still surface as errors, in the status bar.
+
 ### Where an error is shown, and why that is three places
 
 Reported from a phone: *"422 everywhere, nothing works, errors at the bottom so

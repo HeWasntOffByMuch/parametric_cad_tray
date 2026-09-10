@@ -1,1672 +1,1676 @@
 {
- "schema": {
-  "schema_version": "2.0.0",
-  "model_version": "0.1.0",
-  "json_schema": {
-   "$defs": {
-    "AlignmentPins": {
-     "additionalProperties": false,
-     "properties": {
-      "enabled": {
-       "default": false,
-       "title": "Enabled",
-       "type": "boolean"
-      },
-      "pattern": {
-       "default": "four_corners",
-       "enum": [
-        "diagonal_pair",
-        "four_corners"
-       ],
-       "title": "Pattern",
-       "type": "string"
-      },
-      "diameter": {
-       "default": 6.0,
-       "exclusiveMinimum": 0,
-       "maximum": 30,
-       "title": "Diameter",
-       "type": "number"
-      },
-      "height": {
-       "default": 8.0,
-       "exclusiveMinimum": 0,
-       "maximum": 100,
-       "title": "Height",
-       "type": "number"
-      },
-      "inset": {
-       "default": 15.0,
-       "exclusiveMinimum": 0,
-       "maximum": 200,
-       "title": "Inset",
-       "type": "number"
-      }
-     },
-     "title": "AlignmentPins",
-     "type": "object"
-    },
-    "ChamferTreatment": {
-     "additionalProperties": false,
-     "properties": {
-      "kind": {
-       "const": "chamfer",
-       "default": "chamfer",
-       "title": "Kind",
-       "type": "string"
-      },
-      "distance": {
-       "description": "chamfer distance, mm",
-       "exclusiveMinimum": 0.0,
-       "maximum": 100.0,
-       "title": "Distance",
-       "type": "number"
-      }
-     },
-     "required": [
-      "distance"
-     ],
-     "title": "ChamferTreatment",
-     "type": "object"
-    },
-    "CircularFillet": {
-     "additionalProperties": false,
-     "description": "Constant-radius rolling-ball fillet.  The male root treatment in the\nreference: cylindrical faces on the straight runs, exact circular sweeps at\nthe corners.",
-     "properties": {
-      "kind": {
-       "const": "circular_fillet",
-       "default": "circular_fillet",
-       "title": "Kind",
-       "type": "string"
-      },
-      "radius": {
-       "description": "fillet radius, mm",
-       "exclusiveMinimum": 0.0,
-       "maximum": 100.0,
-       "title": "Radius",
-       "type": "number"
-      }
-     },
-     "required": [
-      "radius"
-     ],
-     "title": "CircularFillet",
-     "type": "object"
-    },
-    "CircularObroundProfile": {
-     "additionalProperties": false,
-     "description": "Conventional stadium / obround: circular ends of radius width / 2.",
-     "properties": {
-      "length": {
-       "description": "plan length, X, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Length",
-       "type": "number"
-      },
-      "width": {
-       "description": "plan width, Y, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Width",
-       "type": "number"
-      },
-      "kind": {
-       "const": "circular_obround",
-       "default": "circular_obround",
-       "title": "Kind",
-       "type": "string"
-      }
-     },
-     "required": [
-      "length",
-      "width"
-     ],
-     "title": "CircularObroundProfile",
-     "type": "object"
-    },
-    "CircularRectProfile": {
-     "additionalProperties": false,
-     "description": "Conventional rounded rectangle: constant-radius circular corners.",
-     "properties": {
-      "length": {
-       "description": "plan length, X, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Length",
-       "type": "number"
-      },
-      "width": {
-       "description": "plan width, Y, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Width",
-       "type": "number"
-      },
-      "kind": {
-       "const": "circular_rect",
-       "default": "circular_rect",
-       "title": "Kind",
-       "type": "string"
-      },
-      "corner_radius": {
-       "minimum": 0,
-       "title": "Corner Radius",
-       "type": "number"
-      }
-     },
-     "required": [
-      "length",
-      "width",
-      "corner_radius"
-     ],
-     "title": "CircularRectProfile",
-     "type": "object"
-    },
-    "ClampHoles": {
-     "additionalProperties": false,
-     "properties": {
-      "enabled": {
-       "default": false,
-       "title": "Enabled",
-       "type": "boolean"
-      },
-      "pattern": {
-       "default": "diagonal_pair",
-       "enum": [
-        "diagonal_pair",
-        "four_corners"
-       ],
-       "title": "Pattern",
-       "type": "string"
-      },
-      "diagonal": {
-       "default": "nw_se",
-       "enum": [
-        "nw_se",
-        "ne_sw"
-       ],
-       "title": "Diagonal",
-       "type": "string"
-      },
-      "diameter": {
-       "default": 6.0,
-       "exclusiveMinimum": 0,
-       "maximum": 30,
-       "title": "Diameter",
-       "type": "number"
-      },
-      "inset": {
-       "default": 15.0,
-       "exclusiveMinimum": 0,
-       "maximum": 200,
-       "title": "Inset",
-       "type": "number"
-      },
-      "top_chamfer": {
-       "default": 2.0,
-       "maximum": 10.0,
-       "minimum": 0.0,
-       "title": "Top Chamfer",
-       "type": "number"
-      },
-      "in_male": {
-       "default": false,
-       "title": "In Male",
-       "type": "boolean"
-      },
-      "in_female": {
-       "default": true,
-       "title": "In Female",
-       "type": "boolean"
-      }
-     },
-     "title": "ClampHoles",
-     "type": "object"
-    },
-    "ConicObroundProfile": {
-     "additionalProperties": false,
-     "properties": {
-      "length": {
-       "description": "plan length, X, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Length",
-       "type": "number"
-      },
-      "width": {
-       "description": "plan width, Y, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Width",
-       "type": "number"
-      },
-      "kind": {
-       "const": "conic_obround",
-       "default": "conic_obround",
-       "title": "Kind",
-       "type": "string"
-      },
-      "rho": {
-       "default": 0.5,
-       "exclusiveMaximum": 1.0,
-       "exclusiveMinimum": 0.0,
-       "title": "Rho",
-       "type": "number"
-      }
-     },
-     "required": [
-      "length",
-      "width"
-     ],
-     "title": "ConicObroundProfile",
-     "type": "object"
-    },
-    "ConicRectProfile": {
-     "additionalProperties": false,
-     "description": "Rectangle with rational-quadratic (conic) corners.  rho = 0.5 is the parabola.",
-     "properties": {
-      "length": {
-       "description": "plan length, X, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Length",
-       "type": "number"
-      },
-      "width": {
-       "description": "plan width, Y, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Width",
-       "type": "number"
-      },
-      "kind": {
-       "const": "conic_rect",
-       "default": "conic_rect",
-       "title": "Kind",
-       "type": "string"
-      },
-      "corner_setback": {
-       "minimum": 0,
-       "title": "Corner Setback",
-       "type": "number"
-      },
-      "rho": {
-       "default": 0.5,
-       "exclusiveMaximum": 1.0,
-       "exclusiveMinimum": 0.0,
-       "title": "Rho",
-       "type": "number"
-      }
-     },
-     "required": [
-      "length",
-      "width",
-      "corner_setback"
-     ],
-     "title": "ConicRectProfile",
-     "type": "object"
-    },
-    "EllipseProfile": {
-     "additionalProperties": false,
-     "properties": {
-      "length": {
-       "description": "plan length, X, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Length",
-       "type": "number"
-      },
-      "width": {
-       "description": "plan width, Y, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Width",
-       "type": "number"
-      },
-      "kind": {
-       "const": "ellipse",
-       "default": "ellipse",
-       "title": "Kind",
-       "type": "string"
-      }
-     },
-     "required": [
-      "length",
-      "width"
-     ],
-     "title": "EllipseProfile",
-     "type": "object"
-    },
-    "Features": {
-     "additionalProperties": false,
-     "properties": {
-      "clamp_holes": {
-       "$ref": "#/$defs/ClampHoles",
-       "default": {
-        "enabled": false,
-        "pattern": "diagonal_pair",
-        "diagonal": "nw_se",
-        "diameter": 6.0,
-        "inset": 15.0,
-        "top_chamfer": 2.0,
-        "in_male": false,
-        "in_female": true
-       }
-      },
-      "pry_notches": {
-       "$ref": "#/$defs/PryNotches",
-       "default": {
-        "enabled": false,
-        "pattern": "diagonal_pair",
-        "diagonal": "ne_sw",
-        "size_x": 15.0,
-        "size_y": 15.0,
-        "depth": 8.0
-       }
-      },
-      "alignment_pins": {
-       "$ref": "#/$defs/AlignmentPins",
-       "default": {
-        "enabled": false,
-        "pattern": "four_corners",
-        "diameter": 6.0,
-        "height": 8.0,
-        "inset": 15.0
-       }
-      }
-     },
-     "title": "Features",
-     "type": "object"
-    },
-    "FitParams": {
-     "additionalProperties": false,
-     "properties": {
-      "clearance": {
-       "default": 0.0,
-       "maximum": 2.0,
-       "minimum": -0.5,
-       "title": "Clearance",
-       "type": "number"
-      },
-      "gap_override": {
-       "anyOf": [
-        {
-         "exclusiveMinimum": 0.0,
-         "maximum": 12.0,
-         "type": "number"
+  "presets": [
+    {
+      "description": "The reference pair with the clamp holes and pry notches present in the STL files.",
+      "name": "ref-4x7",
+      "params": {
+        "features": {
+          "alignment_pins": {
+            "diameter": 6.0,
+            "enabled": false,
+            "height": 8.0,
+            "inset": 15.0,
+            "pattern": "four_corners"
+          },
+          "clamp_holes": {
+            "diagonal": "nw_se",
+            "diameter": 6.0,
+            "enabled": true,
+            "in_female": true,
+            "in_male": false,
+            "inset": 15.0,
+            "pattern": "diagonal_pair",
+            "top_chamfer": 2.0
+          },
+          "pry_notches": {
+            "depth": 8.0,
+            "diagonal": "ne_sw",
+            "enabled": true,
+            "pattern": "diagonal_pair",
+            "size_x": 15.0,
+            "size_y": 15.0
+          }
         },
-        {
-         "type": "null"
+        "fit": {
+          "clearance": 0.0,
+          "gap_override": null
+        },
+        "leather": {
+          "compression": 0.0,
+          "thickness": 3.0
+        },
+        "manufacturing": {
+          "min_wall": 2.0,
+          "nozzle_diameter": 0.4,
+          "pin_fit_clearance": 0.2
+        },
+        "mold": {
+          "base_plate_thickness": 15.0,
+          "cavity_plate_thickness": 25.0,
+          "female_entry_blend_bottom": {
+            "kind": "g2_quintic_blend",
+            "setback": 3.0
+          },
+          "female_entry_blend_top": {
+            "kind": "none"
+          },
+          "flange_relief_depth": 0.0,
+          "flange_width": 30.0,
+          "male_floor_blend": {
+            "kind": "g2_quintic_blend",
+            "setback": 5.0
+          },
+          "male_root_blend": {
+            "kind": "circular_fillet",
+            "radius": 1.2
+          },
+          "parts": {
+            "female": true,
+            "male": true
+          },
+          "plate_edge_chamfer": 0.0
+        },
+        "name": "ref-4x7-wetmold",
+        "quality": {
+          "angular_deflection": null,
+          "blend_sections": null,
+          "linear_deflection": null,
+          "max_section_sagitta": null,
+          "mode": "export"
+        },
+        "schema_version": "2.0.0",
+        "tray": {
+          "datum": "inner",
+          "depth": 25.0,
+          "draft_angle": 0.0,
+          "draft_mode": "both",
+          "profile": {
+            "kind": "g2_quintic_obround",
+            "length": 175.0,
+            "width": 105.0
+          }
         }
-       ],
-       "default": null,
-       "title": "Gap Override"
-      }
-     },
-     "title": "FitParams",
-     "type": "object"
+      },
+      "title": "Reference 4x7 (STL revision)"
     },
-    "G2QuinticBlend": {
-     "additionalProperties": false,
-     "description": "The reference's curvature-continuous blend, given by its setback.",
-     "properties": {
-      "kind": {
-       "const": "g2_quintic_blend",
-       "default": "g2_quintic_blend",
-       "title": "Kind",
-       "type": "string"
-      },
-      "setback": {
-       "description": "setback from the sharp edge, mm",
-       "exclusiveMinimum": 0.0,
-       "maximum": 100.0,
-       "title": "Setback",
-       "type": "number"
-      }
-     },
-     "required": [
-      "setback"
-     ],
-     "title": "G2QuinticBlend",
-     "type": "object"
-    },
-    "G2QuinticObroundProfile": {
-     "additionalProperties": false,
-     "description": "The reference profile: G2 quintic corners at the maximum setback, so the\nshort ends have no straight run at all.",
-     "properties": {
-      "length": {
-       "description": "plan length, X, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Length",
-       "type": "number"
-      },
-      "width": {
-       "description": "plan width, Y, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Width",
-       "type": "number"
-      },
-      "kind": {
-       "const": "g2_quintic_obround",
-       "default": "g2_quintic_obround",
-       "title": "Kind",
-       "type": "string"
-      }
-     },
-     "required": [
-      "length",
-      "width"
-     ],
-     "title": "G2QuinticObroundProfile",
-     "type": "object"
-    },
-    "G2QuinticRectProfile": {
-     "additionalProperties": false,
-     "description": "Rectangle with the reference's G2 corner: non-rational quintic B-spline,\nzero curvature at both tangent points.  Recovered verbatim from the Onshape\nSTEP; not a conic and not approximable by one within 0.23 mm at s = 52.5.",
-     "properties": {
-      "length": {
-       "description": "plan length, X, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Length",
-       "type": "number"
-      },
-      "width": {
-       "description": "plan width, Y, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Width",
-       "type": "number"
-      },
-      "kind": {
-       "const": "g2_quintic_rect",
-       "default": "g2_quintic_rect",
-       "title": "Kind",
-       "type": "string"
-      },
-      "corner_setback": {
-       "description": "setback from the sharp corner, mm",
-       "minimum": 0,
-       "title": "Corner Setback",
-       "type": "number"
-      }
-     },
-     "required": [
-      "length",
-      "width",
-      "corner_setback"
-     ],
-     "title": "G2QuinticRectProfile",
-     "type": "object"
-    },
-    "LeatherParams": {
-     "additionalProperties": false,
-     "properties": {
-      "thickness": {
-       "default": 3.0,
-       "exclusiveMinimum": 0,
-       "maximum": 12.0,
-       "title": "Thickness",
-       "type": "number"
-      },
-      "compression": {
-       "default": 0.0,
-       "description": "fraction",
-       "maximum": 0.4,
-       "minimum": 0.0,
-       "title": "Compression",
-       "type": "number"
-      }
-     },
-     "title": "LeatherParams",
-     "type": "object"
-    },
-    "ManufacturingParams": {
-     "additionalProperties": false,
-     "properties": {
-      "pin_fit_clearance": {
-       "default": 0.2,
-       "maximum": 1.0,
-       "minimum": 0.0,
-       "title": "Pin Fit Clearance",
-       "type": "number"
-      },
-      "min_wall": {
-       "default": 2.0,
-       "exclusiveMinimum": 0,
-       "maximum": 20,
-       "title": "Min Wall",
-       "type": "number"
-      },
-      "nozzle_diameter": {
-       "default": 0.4,
-       "exclusiveMinimum": 0,
-       "maximum": 2.0,
-       "title": "Nozzle Diameter",
-       "type": "number"
-      }
-     },
-     "title": "ManufacturingParams",
-     "type": "object"
-    },
-    "MoldParams": {
-     "additionalProperties": false,
-     "properties": {
-      "parts": {
-       "$ref": "#/$defs/PartSelection",
-       "default": {
-        "male": true,
-        "female": true
-       }
-      },
-      "flange_width": {
-       "default": 30.0,
-       "exclusiveMinimum": 0,
-       "maximum": 200,
-       "title": "Flange Width",
-       "type": "number"
-      },
-      "base_plate_thickness": {
-       "default": 15.0,
-       "exclusiveMinimum": 0,
-       "maximum": 100,
-       "title": "Base Plate Thickness",
-       "type": "number"
-      },
-      "cavity_plate_thickness": {
-       "default": 25.0,
-       "exclusiveMinimum": 0,
-       "maximum": 300,
-       "title": "Cavity Plate Thickness",
-       "type": "number"
-      },
-      "male_root_blend": {
-       "default": {
-        "kind": "circular_fillet",
-        "radius": 1.2
-       },
-       "discriminator": {
-        "mapping": {
-         "chamfer": "#/$defs/ChamferTreatment",
-         "circular_fillet": "#/$defs/CircularFillet",
-         "g2_quintic_blend": "#/$defs/G2QuinticBlend",
-         "none": "#/$defs/NoTreatment"
+    {
+      "description": "The reference shape as exported to STEP: no clamp holes, no pry notches.",
+      "name": "ref-4x7-step",
+      "params": {
+        "features": {
+          "alignment_pins": {
+            "diameter": 6.0,
+            "enabled": false,
+            "height": 8.0,
+            "inset": 15.0,
+            "pattern": "four_corners"
+          },
+          "clamp_holes": {
+            "diagonal": "nw_se",
+            "diameter": 6.0,
+            "enabled": false,
+            "in_female": true,
+            "in_male": false,
+            "inset": 15.0,
+            "pattern": "diagonal_pair",
+            "top_chamfer": 2.0
+          },
+          "pry_notches": {
+            "depth": 8.0,
+            "diagonal": "ne_sw",
+            "enabled": false,
+            "pattern": "diagonal_pair",
+            "size_x": 15.0,
+            "size_y": 15.0
+          }
         },
-        "propertyName": "kind"
-       },
-       "oneOf": [
-        {
-         "$ref": "#/$defs/CircularFillet"
+        "fit": {
+          "clearance": 0.0,
+          "gap_override": null
         },
-        {
-         "$ref": "#/$defs/G2QuinticBlend"
+        "leather": {
+          "compression": 0.0,
+          "thickness": 3.0
         },
-        {
-         "$ref": "#/$defs/ChamferTreatment"
+        "manufacturing": {
+          "min_wall": 2.0,
+          "nozzle_diameter": 0.4,
+          "pin_fit_clearance": 0.2
         },
-        {
-         "$ref": "#/$defs/NoTreatment"
+        "mold": {
+          "base_plate_thickness": 15.0,
+          "cavity_plate_thickness": 25.0,
+          "female_entry_blend_bottom": {
+            "kind": "g2_quintic_blend",
+            "setback": 3.0
+          },
+          "female_entry_blend_top": {
+            "kind": "none"
+          },
+          "flange_relief_depth": 0.0,
+          "flange_width": 30.0,
+          "male_floor_blend": {
+            "kind": "g2_quintic_blend",
+            "setback": 5.0
+          },
+          "male_root_blend": {
+            "kind": "circular_fillet",
+            "radius": 1.2
+          },
+          "parts": {
+            "female": true,
+            "male": true
+          },
+          "plate_edge_chamfer": 0.0
+        },
+        "name": "ref-4x7-step",
+        "quality": {
+          "angular_deflection": null,
+          "blend_sections": null,
+          "linear_deflection": null,
+          "max_section_sagitta": null,
+          "mode": "export"
+        },
+        "schema_version": "2.0.0",
+        "tray": {
+          "datum": "inner",
+          "depth": 25.0,
+          "draft_angle": 0.0,
+          "draft_mode": "both",
+          "profile": {
+            "kind": "g2_quintic_obround",
+            "length": 175.0,
+            "width": 105.0
+          }
         }
-       ],
-       "title": "Male Root Blend"
       },
-      "male_floor_blend": {
-       "default": {
-        "kind": "g2_quintic_blend",
-        "setback": 5.0
-       },
-       "discriminator": {
-        "mapping": {
-         "chamfer": "#/$defs/ChamferTreatment",
-         "circular_fillet": "#/$defs/CircularFillet",
-         "g2_quintic_blend": "#/$defs/G2QuinticBlend",
-         "none": "#/$defs/NoTreatment"
-        },
-        "propertyName": "kind"
-       },
-       "oneOf": [
-        {
-         "$ref": "#/$defs/CircularFillet"
-        },
-        {
-         "$ref": "#/$defs/G2QuinticBlend"
-        },
-        {
-         "$ref": "#/$defs/ChamferTreatment"
-        },
-        {
-         "$ref": "#/$defs/NoTreatment"
-        }
-       ],
-       "title": "Male Floor Blend"
-      },
-      "female_entry_blend_top": {
-       "default": {
-        "kind": "g2_quintic_blend",
-        "setback": 3.0
-       },
-       "discriminator": {
-        "mapping": {
-         "chamfer": "#/$defs/ChamferTreatment",
-         "circular_fillet": "#/$defs/CircularFillet",
-         "g2_quintic_blend": "#/$defs/G2QuinticBlend",
-         "none": "#/$defs/NoTreatment"
-        },
-        "propertyName": "kind"
-       },
-       "oneOf": [
-        {
-         "$ref": "#/$defs/CircularFillet"
-        },
-        {
-         "$ref": "#/$defs/G2QuinticBlend"
-        },
-        {
-         "$ref": "#/$defs/ChamferTreatment"
-        },
-        {
-         "$ref": "#/$defs/NoTreatment"
-        }
-       ],
-       "title": "Female Entry Blend Top"
-      },
-      "female_entry_blend_bottom": {
-       "default": {
-        "kind": "none"
-       },
-       "discriminator": {
-        "mapping": {
-         "chamfer": "#/$defs/ChamferTreatment",
-         "circular_fillet": "#/$defs/CircularFillet",
-         "g2_quintic_blend": "#/$defs/G2QuinticBlend",
-         "none": "#/$defs/NoTreatment"
-        },
-        "propertyName": "kind"
-       },
-       "oneOf": [
-        {
-         "$ref": "#/$defs/CircularFillet"
-        },
-        {
-         "$ref": "#/$defs/G2QuinticBlend"
-        },
-        {
-         "$ref": "#/$defs/ChamferTreatment"
-        },
-        {
-         "$ref": "#/$defs/NoTreatment"
-        }
-       ],
-       "title": "Female Entry Blend Bottom"
-      },
-      "plate_edge_chamfer": {
-       "default": 0.0,
-       "maximum": 10.0,
-       "minimum": 0.0,
-       "title": "Plate Edge Chamfer",
-       "type": "number"
-      },
-      "flange_relief_depth": {
-       "default": 0.0,
-       "maximum": 20.0,
-       "minimum": 0.0,
-       "title": "Flange Relief Depth",
-       "type": "number"
-      }
-     },
-     "title": "MoldParams",
-     "type": "object"
-    },
-    "NoTreatment": {
-     "additionalProperties": false,
-     "properties": {
-      "kind": {
-       "const": "none",
-       "default": "none",
-       "title": "Kind",
-       "type": "string"
-      }
-     },
-     "title": "NoTreatment",
-     "type": "object"
-    },
-    "PartSelection": {
-     "additionalProperties": false,
-     "properties": {
-      "male": {
-       "default": true,
-       "title": "Male",
-       "type": "boolean"
-      },
-      "female": {
-       "default": true,
-       "title": "Female",
-       "type": "boolean"
-      }
-     },
-     "title": "PartSelection",
-     "type": "object"
-    },
-    "PryNotches": {
-     "additionalProperties": false,
-     "properties": {
-      "enabled": {
-       "default": false,
-       "title": "Enabled",
-       "type": "boolean"
-      },
-      "pattern": {
-       "default": "diagonal_pair",
-       "enum": [
-        "diagonal_pair",
-        "four_corners"
-       ],
-       "title": "Pattern",
-       "type": "string"
-      },
-      "diagonal": {
-       "default": "ne_sw",
-       "enum": [
-        "nw_se",
-        "ne_sw"
-       ],
-       "title": "Diagonal",
-       "type": "string"
-      },
-      "size_x": {
-       "default": 15.0,
-       "exclusiveMinimum": 0,
-       "maximum": 100,
-       "title": "Size X",
-       "type": "number"
-      },
-      "size_y": {
-       "default": 15.0,
-       "exclusiveMinimum": 0,
-       "maximum": 100,
-       "title": "Size Y",
-       "type": "number"
-      },
-      "depth": {
-       "default": 8.0,
-       "exclusiveMinimum": 0,
-       "maximum": 200,
-       "title": "Depth",
-       "type": "number"
-      }
-     },
-     "title": "PryNotches",
-     "type": "object"
-    },
-    "QualityParams": {
-     "additionalProperties": false,
-     "description": "Preview and export describe the same geometry; they differ only in loft\nsection density and tessellation tolerance.  Leave the overrides at None to\ntake the mode's measured defaults from `traymold.quality.DEFAULTS`.",
-     "properties": {
-      "mode": {
-       "default": "export",
-       "enum": [
-        "preview",
-        "export"
-       ],
-       "title": "Mode",
-       "type": "string"
-      },
-      "blend_sections": {
-       "anyOf": [
-        {
-         "maximum": 256,
-         "minimum": 4,
-         "type": "integer"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "default": null,
-       "description": "cap on loft sections per edge treatment",
-       "title": "Blend Sections"
-      },
-      "max_section_sagitta": {
-       "anyOf": [
-        {
-         "exclusiveMinimum": 0,
-         "maximum": 1.0,
-         "type": "number"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "default": null,
-       "description": "target loft chord error, mm",
-       "title": "Max Section Sagitta"
-      },
-      "linear_deflection": {
-       "anyOf": [
-        {
-         "exclusiveMinimum": 0,
-         "maximum": 5.0,
-         "type": "number"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "default": null,
-       "title": "Linear Deflection"
-      },
-      "angular_deflection": {
-       "anyOf": [
-        {
-         "exclusiveMinimum": 0,
-         "maximum": 1.5,
-         "type": "number"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "default": null,
-       "title": "Angular Deflection"
-      }
-     },
-     "title": "QualityParams",
-     "type": "object"
-    },
-    "SuperellipseProfile": {
-     "additionalProperties": false,
-     "properties": {
-      "length": {
-       "description": "plan length, X, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Length",
-       "type": "number"
-      },
-      "width": {
-       "description": "plan width, Y, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 1000,
-       "title": "Width",
-       "type": "number"
-      },
-      "kind": {
-       "const": "superellipse",
-       "default": "superellipse",
-       "title": "Kind",
-       "type": "string"
-      },
-      "exponent": {
-       "default": 4.0,
-       "exclusiveMinimum": 1.0,
-       "maximum": 20.0,
-       "title": "Exponent",
-       "type": "number"
-      }
-     },
-     "required": [
-      "length",
-      "width"
-     ],
-     "title": "SuperellipseProfile",
-     "type": "object"
-    },
-    "TrayParams": {
-     "additionalProperties": false,
-     "properties": {
-      "profile": {
-       "discriminator": {
-        "mapping": {
-         "circular_obround": "#/$defs/CircularObroundProfile",
-         "circular_rect": "#/$defs/CircularRectProfile",
-         "conic_obround": "#/$defs/ConicObroundProfile",
-         "conic_rect": "#/$defs/ConicRectProfile",
-         "ellipse": "#/$defs/EllipseProfile",
-         "g2_quintic_obround": "#/$defs/G2QuinticObroundProfile",
-         "g2_quintic_rect": "#/$defs/G2QuinticRectProfile",
-         "superellipse": "#/$defs/SuperellipseProfile"
-        },
-        "propertyName": "kind"
-       },
-       "oneOf": [
-        {
-         "$ref": "#/$defs/G2QuinticObroundProfile"
-        },
-        {
-         "$ref": "#/$defs/G2QuinticRectProfile"
-        },
-        {
-         "$ref": "#/$defs/ConicObroundProfile"
-        },
-        {
-         "$ref": "#/$defs/ConicRectProfile"
-        },
-        {
-         "$ref": "#/$defs/CircularObroundProfile"
-        },
-        {
-         "$ref": "#/$defs/CircularRectProfile"
-        },
-        {
-         "$ref": "#/$defs/EllipseProfile"
-        },
-        {
-         "$ref": "#/$defs/SuperellipseProfile"
-        }
-       ],
-       "title": "Profile"
-      },
-      "depth": {
-       "default": 25.0,
-       "description": "draw depth, mm",
-       "exclusiveMinimum": 0,
-       "maximum": 300,
-       "title": "Depth",
-       "type": "number"
-      },
-      "datum": {
-       "default": "inner",
-       "enum": [
-        "inner",
-        "outer"
-       ],
-       "title": "Datum",
-       "type": "string"
-      },
-      "draft_angle": {
-       "default": 0.0,
-       "description": "degrees",
-       "maximum": 15.0,
-       "minimum": 0.0,
-       "title": "Draft Angle",
-       "type": "number"
-      },
-      "draft_mode": {
-       "default": "both",
-       "enum": [
-        "both",
-        "plug_only",
-        "cavity_only"
-       ],
-       "title": "Draft Mode",
-       "type": "string"
-      }
-     },
-     "title": "TrayParams",
-     "type": "object"
+      "title": "Reference 4x7 (STEP revision)"
     }
-   },
-   "additionalProperties": false,
-   "properties": {
-    "schema_version": {
-     "default": "2.0.0",
-     "title": "Schema Version",
-     "type": "string"
-    },
-    "name": {
-     "default": "untitled",
-     "title": "Name",
-     "type": "string"
-    },
-    "tray": {
-     "$ref": "#/$defs/TrayParams",
-     "default": {
-      "profile": {
-       "kind": "g2_quintic_obround",
-       "length": 175.0,
-       "width": 105.0
+  ],
+  "schema": {
+    "defaults": {
+      "features": {
+        "alignment_pins": {
+          "diameter": 6.0,
+          "enabled": false,
+          "height": 8.0,
+          "inset": 15.0,
+          "pattern": "four_corners"
+        },
+        "clamp_holes": {
+          "diagonal": "nw_se",
+          "diameter": 6.0,
+          "enabled": false,
+          "in_female": true,
+          "in_male": false,
+          "inset": 15.0,
+          "pattern": "diagonal_pair",
+          "top_chamfer": 2.0
+        },
+        "pry_notches": {
+          "depth": 8.0,
+          "diagonal": "ne_sw",
+          "enabled": false,
+          "pattern": "diagonal_pair",
+          "size_x": 15.0,
+          "size_y": 15.0
+        }
       },
-      "depth": 25.0,
-      "datum": "inner",
-      "draft_angle": 0.0,
-      "draft_mode": "both"
-     }
-    },
-    "leather": {
-     "$ref": "#/$defs/LeatherParams",
-     "default": {
-      "thickness": 3.0,
-      "compression": 0.0
-     }
-    },
-    "fit": {
-     "$ref": "#/$defs/FitParams",
-     "default": {
-      "clearance": 0.0,
-      "gap_override": null
-     }
-    },
-    "mold": {
-     "$ref": "#/$defs/MoldParams",
-     "default": {
-      "parts": {
-       "female": true,
-       "male": true
+      "fit": {
+        "clearance": 0.0,
+        "gap_override": null
       },
-      "flange_width": 30.0,
-      "base_plate_thickness": 15.0,
-      "cavity_plate_thickness": 25.0,
-      "male_root_blend": {
-       "kind": "circular_fillet",
-       "radius": 1.2
+      "leather": {
+        "compression": 0.0,
+        "thickness": 3.0
       },
-      "male_floor_blend": {
-       "kind": "g2_quintic_blend",
-       "setback": 5.0
+      "manufacturing": {
+        "min_wall": 2.0,
+        "nozzle_diameter": 0.4,
+        "pin_fit_clearance": 0.2
       },
-      "female_entry_blend_top": {
-       "kind": "g2_quintic_blend",
-       "setback": 3.0
+      "mold": {
+        "base_plate_thickness": 15.0,
+        "cavity_plate_thickness": 25.0,
+        "female_entry_blend_bottom": {
+          "kind": "g2_quintic_blend",
+          "setback": 3.0
+        },
+        "female_entry_blend_top": {
+          "kind": "none"
+        },
+        "flange_relief_depth": 0.0,
+        "flange_width": 30.0,
+        "male_floor_blend": {
+          "kind": "g2_quintic_blend",
+          "setback": 5.0
+        },
+        "male_root_blend": {
+          "kind": "circular_fillet",
+          "radius": 1.2
+        },
+        "parts": {
+          "female": true,
+          "male": true
+        },
+        "plate_edge_chamfer": 0.0
       },
-      "female_entry_blend_bottom": {
-       "kind": "none"
+      "name": "untitled",
+      "quality": {
+        "angular_deflection": null,
+        "blend_sections": null,
+        "linear_deflection": null,
+        "max_section_sagitta": null,
+        "mode": "export"
       },
-      "plate_edge_chamfer": 0.0,
-      "flange_relief_depth": 0.0
-     }
-    },
-    "features": {
-     "$ref": "#/$defs/Features",
-     "default": {
-      "clamp_holes": {
-       "diagonal": "nw_se",
-       "diameter": 6.0,
-       "enabled": false,
-       "in_female": true,
-       "in_male": false,
-       "inset": 15.0,
-       "pattern": "diagonal_pair",
-       "top_chamfer": 2.0
-      },
-      "pry_notches": {
-       "depth": 8.0,
-       "diagonal": "ne_sw",
-       "enabled": false,
-       "pattern": "diagonal_pair",
-       "size_x": 15.0,
-       "size_y": 15.0
-      },
-      "alignment_pins": {
-       "diameter": 6.0,
-       "enabled": false,
-       "height": 8.0,
-       "inset": 15.0,
-       "pattern": "four_corners"
+      "schema_version": "2.0.0",
+      "tray": {
+        "datum": "inner",
+        "depth": 25.0,
+        "draft_angle": 0.0,
+        "draft_mode": "both",
+        "profile": {
+          "kind": "g2_quintic_obround",
+          "length": 175.0,
+          "width": 105.0
+        }
       }
-     }
     },
-    "manufacturing": {
-     "$ref": "#/$defs/ManufacturingParams",
-     "default": {
-      "pin_fit_clearance": 0.2,
-      "min_wall": 2.0,
-      "nozzle_diameter": 0.4
-     }
+    "json_schema": {
+      "$defs": {
+        "AlignmentPins": {
+          "additionalProperties": false,
+          "properties": {
+            "diameter": {
+              "default": 6.0,
+              "exclusiveMinimum": 0,
+              "maximum": 30,
+              "title": "Diameter",
+              "type": "number"
+            },
+            "enabled": {
+              "default": false,
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "height": {
+              "default": 8.0,
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "title": "Height",
+              "type": "number"
+            },
+            "inset": {
+              "default": 15.0,
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "title": "Inset",
+              "type": "number"
+            },
+            "pattern": {
+              "default": "four_corners",
+              "enum": [
+                "diagonal_pair",
+                "four_corners"
+              ],
+              "title": "Pattern",
+              "type": "string"
+            }
+          },
+          "title": "AlignmentPins",
+          "type": "object"
+        },
+        "ChamferTreatment": {
+          "additionalProperties": false,
+          "properties": {
+            "distance": {
+              "default": 2.0,
+              "description": "chamfer distance, mm",
+              "exclusiveMinimum": 0.0,
+              "maximum": 100.0,
+              "title": "Distance",
+              "type": "number"
+            },
+            "kind": {
+              "const": "chamfer",
+              "default": "chamfer",
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          "title": "ChamferTreatment",
+          "type": "object"
+        },
+        "CircularFillet": {
+          "additionalProperties": false,
+          "description": "Constant-radius rolling-ball fillet.  The male root treatment in the\nreference: cylindrical faces on the straight runs, exact circular sweeps at\nthe corners.",
+          "properties": {
+            "kind": {
+              "const": "circular_fillet",
+              "default": "circular_fillet",
+              "title": "Kind",
+              "type": "string"
+            },
+            "radius": {
+              "default": 2.0,
+              "description": "fillet radius, mm",
+              "exclusiveMinimum": 0.0,
+              "maximum": 100.0,
+              "title": "Radius",
+              "type": "number"
+            }
+          },
+          "title": "CircularFillet",
+          "type": "object"
+        },
+        "CircularObroundProfile": {
+          "additionalProperties": false,
+          "description": "Conventional stadium / obround: circular ends of radius width / 2.",
+          "properties": {
+            "kind": {
+              "const": "circular_obround",
+              "default": "circular_obround",
+              "title": "Kind",
+              "type": "string"
+            },
+            "length": {
+              "default": 175.0,
+              "description": "plan length, X, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Length",
+              "type": "number"
+            },
+            "width": {
+              "default": 105.0,
+              "description": "plan width, Y, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "CircularObroundProfile",
+          "type": "object"
+        },
+        "CircularRectProfile": {
+          "additionalProperties": false,
+          "description": "Conventional rounded rectangle: constant-radius circular corners.",
+          "properties": {
+            "corner_radius": {
+              "default": 25.0,
+              "minimum": 0,
+              "title": "Corner Radius",
+              "type": "number"
+            },
+            "kind": {
+              "const": "circular_rect",
+              "default": "circular_rect",
+              "title": "Kind",
+              "type": "string"
+            },
+            "length": {
+              "default": 175.0,
+              "description": "plan length, X, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Length",
+              "type": "number"
+            },
+            "width": {
+              "default": 105.0,
+              "description": "plan width, Y, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "CircularRectProfile",
+          "type": "object"
+        },
+        "ClampHoles": {
+          "additionalProperties": false,
+          "properties": {
+            "diagonal": {
+              "default": "nw_se",
+              "enum": [
+                "nw_se",
+                "ne_sw"
+              ],
+              "title": "Diagonal",
+              "type": "string"
+            },
+            "diameter": {
+              "default": 6.0,
+              "exclusiveMinimum": 0,
+              "maximum": 30,
+              "title": "Diameter",
+              "type": "number"
+            },
+            "enabled": {
+              "default": false,
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "in_female": {
+              "default": true,
+              "title": "In Female",
+              "type": "boolean"
+            },
+            "in_male": {
+              "default": false,
+              "title": "In Male",
+              "type": "boolean"
+            },
+            "inset": {
+              "default": 15.0,
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "title": "Inset",
+              "type": "number"
+            },
+            "pattern": {
+              "default": "diagonal_pair",
+              "enum": [
+                "diagonal_pair",
+                "four_corners"
+              ],
+              "title": "Pattern",
+              "type": "string"
+            },
+            "top_chamfer": {
+              "default": 2.0,
+              "maximum": 10.0,
+              "minimum": 0.0,
+              "title": "Top Chamfer",
+              "type": "number"
+            }
+          },
+          "title": "ClampHoles",
+          "type": "object"
+        },
+        "ConicObroundProfile": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "conic_obround",
+              "default": "conic_obround",
+              "title": "Kind",
+              "type": "string"
+            },
+            "length": {
+              "default": 175.0,
+              "description": "plan length, X, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Length",
+              "type": "number"
+            },
+            "rho": {
+              "default": 0.5,
+              "exclusiveMaximum": 1.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Rho",
+              "type": "number"
+            },
+            "width": {
+              "default": 105.0,
+              "description": "plan width, Y, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "ConicObroundProfile",
+          "type": "object"
+        },
+        "ConicRectProfile": {
+          "additionalProperties": false,
+          "description": "Rectangle with rational-quadratic (conic) corners.  rho = 0.5 is the parabola.",
+          "properties": {
+            "corner_setback": {
+              "default": 25.0,
+              "description": "setback from the sharp corner, mm",
+              "minimum": 0,
+              "title": "Corner Setback",
+              "type": "number"
+            },
+            "kind": {
+              "const": "conic_rect",
+              "default": "conic_rect",
+              "title": "Kind",
+              "type": "string"
+            },
+            "length": {
+              "default": 175.0,
+              "description": "plan length, X, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Length",
+              "type": "number"
+            },
+            "rho": {
+              "default": 0.5,
+              "exclusiveMaximum": 1.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Rho",
+              "type": "number"
+            },
+            "width": {
+              "default": 105.0,
+              "description": "plan width, Y, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "ConicRectProfile",
+          "type": "object"
+        },
+        "EllipseProfile": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ellipse",
+              "default": "ellipse",
+              "title": "Kind",
+              "type": "string"
+            },
+            "length": {
+              "default": 175.0,
+              "description": "plan length, X, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Length",
+              "type": "number"
+            },
+            "width": {
+              "default": 105.0,
+              "description": "plan width, Y, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "EllipseProfile",
+          "type": "object"
+        },
+        "Features": {
+          "additionalProperties": false,
+          "properties": {
+            "alignment_pins": {
+              "$ref": "#/$defs/AlignmentPins",
+              "default": {
+                "diameter": 6.0,
+                "enabled": false,
+                "height": 8.0,
+                "inset": 15.0,
+                "pattern": "four_corners"
+              }
+            },
+            "clamp_holes": {
+              "$ref": "#/$defs/ClampHoles",
+              "default": {
+                "diagonal": "nw_se",
+                "diameter": 6.0,
+                "enabled": false,
+                "in_female": true,
+                "in_male": false,
+                "inset": 15.0,
+                "pattern": "diagonal_pair",
+                "top_chamfer": 2.0
+              }
+            },
+            "pry_notches": {
+              "$ref": "#/$defs/PryNotches",
+              "default": {
+                "depth": 8.0,
+                "diagonal": "ne_sw",
+                "enabled": false,
+                "pattern": "diagonal_pair",
+                "size_x": 15.0,
+                "size_y": 15.0
+              }
+            }
+          },
+          "title": "Features",
+          "type": "object"
+        },
+        "FitParams": {
+          "additionalProperties": false,
+          "properties": {
+            "clearance": {
+              "default": 0.0,
+              "maximum": 2.0,
+              "minimum": -0.5,
+              "title": "Clearance",
+              "type": "number"
+            },
+            "gap_override": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.0,
+                  "maximum": 12.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Gap Override"
+            }
+          },
+          "title": "FitParams",
+          "type": "object"
+        },
+        "G2QuinticBlend": {
+          "additionalProperties": false,
+          "description": "The reference's curvature-continuous blend, given by its setback.",
+          "properties": {
+            "kind": {
+              "const": "g2_quintic_blend",
+              "default": "g2_quintic_blend",
+              "title": "Kind",
+              "type": "string"
+            },
+            "setback": {
+              "default": 3.0,
+              "description": "setback from the sharp edge, mm",
+              "exclusiveMinimum": 0.0,
+              "maximum": 100.0,
+              "title": "Setback",
+              "type": "number"
+            }
+          },
+          "title": "G2QuinticBlend",
+          "type": "object"
+        },
+        "G2QuinticObroundProfile": {
+          "additionalProperties": false,
+          "description": "The reference profile: G2 quintic corners at the maximum setback, so the\nshort ends have no straight run at all.",
+          "properties": {
+            "kind": {
+              "const": "g2_quintic_obround",
+              "default": "g2_quintic_obround",
+              "title": "Kind",
+              "type": "string"
+            },
+            "length": {
+              "default": 175.0,
+              "description": "plan length, X, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Length",
+              "type": "number"
+            },
+            "width": {
+              "default": 105.0,
+              "description": "plan width, Y, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "G2QuinticObroundProfile",
+          "type": "object"
+        },
+        "G2QuinticRectProfile": {
+          "additionalProperties": false,
+          "description": "Rectangle with the reference's G2 corner: non-rational quintic B-spline,\nzero curvature at both tangent points.  Recovered verbatim from the Onshape\nSTEP; not a conic and not approximable by one within 0.23 mm at s = 52.5.",
+          "properties": {
+            "corner_setback": {
+              "default": 25.0,
+              "description": "setback from the sharp corner, mm",
+              "minimum": 0,
+              "title": "Corner Setback",
+              "type": "number"
+            },
+            "kind": {
+              "const": "g2_quintic_rect",
+              "default": "g2_quintic_rect",
+              "title": "Kind",
+              "type": "string"
+            },
+            "length": {
+              "default": 175.0,
+              "description": "plan length, X, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Length",
+              "type": "number"
+            },
+            "width": {
+              "default": 105.0,
+              "description": "plan width, Y, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "G2QuinticRectProfile",
+          "type": "object"
+        },
+        "LeatherParams": {
+          "additionalProperties": false,
+          "properties": {
+            "compression": {
+              "default": 0.0,
+              "description": "fraction",
+              "maximum": 0.4,
+              "minimum": 0.0,
+              "title": "Compression",
+              "type": "number"
+            },
+            "thickness": {
+              "default": 3.0,
+              "exclusiveMinimum": 0,
+              "maximum": 12.0,
+              "title": "Thickness",
+              "type": "number"
+            }
+          },
+          "title": "LeatherParams",
+          "type": "object"
+        },
+        "ManufacturingParams": {
+          "additionalProperties": false,
+          "properties": {
+            "min_wall": {
+              "default": 2.0,
+              "exclusiveMinimum": 0,
+              "maximum": 20,
+              "title": "Min Wall",
+              "type": "number"
+            },
+            "nozzle_diameter": {
+              "default": 0.4,
+              "exclusiveMinimum": 0,
+              "maximum": 2.0,
+              "title": "Nozzle Diameter",
+              "type": "number"
+            },
+            "pin_fit_clearance": {
+              "default": 0.2,
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "title": "Pin Fit Clearance",
+              "type": "number"
+            }
+          },
+          "title": "ManufacturingParams",
+          "type": "object"
+        },
+        "MoldParams": {
+          "additionalProperties": false,
+          "properties": {
+            "base_plate_thickness": {
+              "default": 15.0,
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "title": "Base Plate Thickness",
+              "type": "number"
+            },
+            "cavity_plate_thickness": {
+              "default": 25.0,
+              "exclusiveMinimum": 0,
+              "maximum": 300,
+              "title": "Cavity Plate Thickness",
+              "type": "number"
+            },
+            "female_entry_blend_bottom": {
+              "default": {
+                "kind": "g2_quintic_blend",
+                "setback": 3.0
+              },
+              "discriminator": {
+                "mapping": {
+                  "chamfer": "#/$defs/ChamferTreatment",
+                  "circular_fillet": "#/$defs/CircularFillet",
+                  "g2_quintic_blend": "#/$defs/G2QuinticBlend",
+                  "none": "#/$defs/NoTreatment"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/CircularFillet"
+                },
+                {
+                  "$ref": "#/$defs/G2QuinticBlend"
+                },
+                {
+                  "$ref": "#/$defs/ChamferTreatment"
+                },
+                {
+                  "$ref": "#/$defs/NoTreatment"
+                }
+              ],
+              "title": "Female Entry Blend Bottom"
+            },
+            "female_entry_blend_top": {
+              "default": {
+                "kind": "none"
+              },
+              "discriminator": {
+                "mapping": {
+                  "chamfer": "#/$defs/ChamferTreatment",
+                  "circular_fillet": "#/$defs/CircularFillet",
+                  "g2_quintic_blend": "#/$defs/G2QuinticBlend",
+                  "none": "#/$defs/NoTreatment"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/CircularFillet"
+                },
+                {
+                  "$ref": "#/$defs/G2QuinticBlend"
+                },
+                {
+                  "$ref": "#/$defs/ChamferTreatment"
+                },
+                {
+                  "$ref": "#/$defs/NoTreatment"
+                }
+              ],
+              "title": "Female Entry Blend Top"
+            },
+            "flange_relief_depth": {
+              "default": 0.0,
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "title": "Flange Relief Depth",
+              "type": "number"
+            },
+            "flange_width": {
+              "default": 30.0,
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "title": "Flange Width",
+              "type": "number"
+            },
+            "male_floor_blend": {
+              "default": {
+                "kind": "g2_quintic_blend",
+                "setback": 5.0
+              },
+              "discriminator": {
+                "mapping": {
+                  "chamfer": "#/$defs/ChamferTreatment",
+                  "circular_fillet": "#/$defs/CircularFillet",
+                  "g2_quintic_blend": "#/$defs/G2QuinticBlend",
+                  "none": "#/$defs/NoTreatment"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/CircularFillet"
+                },
+                {
+                  "$ref": "#/$defs/G2QuinticBlend"
+                },
+                {
+                  "$ref": "#/$defs/ChamferTreatment"
+                },
+                {
+                  "$ref": "#/$defs/NoTreatment"
+                }
+              ],
+              "title": "Male Floor Blend"
+            },
+            "male_root_blend": {
+              "default": {
+                "kind": "circular_fillet",
+                "radius": 1.2
+              },
+              "discriminator": {
+                "mapping": {
+                  "chamfer": "#/$defs/ChamferTreatment",
+                  "circular_fillet": "#/$defs/CircularFillet",
+                  "g2_quintic_blend": "#/$defs/G2QuinticBlend",
+                  "none": "#/$defs/NoTreatment"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/CircularFillet"
+                },
+                {
+                  "$ref": "#/$defs/G2QuinticBlend"
+                },
+                {
+                  "$ref": "#/$defs/ChamferTreatment"
+                },
+                {
+                  "$ref": "#/$defs/NoTreatment"
+                }
+              ],
+              "title": "Male Root Blend"
+            },
+            "parts": {
+              "$ref": "#/$defs/PartSelection",
+              "default": {
+                "female": true,
+                "male": true
+              }
+            },
+            "plate_edge_chamfer": {
+              "default": 0.0,
+              "maximum": 10.0,
+              "minimum": 0.0,
+              "title": "Plate Edge Chamfer",
+              "type": "number"
+            }
+          },
+          "title": "MoldParams",
+          "type": "object"
+        },
+        "NoTreatment": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "none",
+              "default": "none",
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          "title": "NoTreatment",
+          "type": "object"
+        },
+        "PartSelection": {
+          "additionalProperties": false,
+          "properties": {
+            "female": {
+              "default": true,
+              "title": "Female",
+              "type": "boolean"
+            },
+            "male": {
+              "default": true,
+              "title": "Male",
+              "type": "boolean"
+            }
+          },
+          "title": "PartSelection",
+          "type": "object"
+        },
+        "PryNotches": {
+          "additionalProperties": false,
+          "properties": {
+            "depth": {
+              "default": 8.0,
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "title": "Depth",
+              "type": "number"
+            },
+            "diagonal": {
+              "default": "ne_sw",
+              "enum": [
+                "nw_se",
+                "ne_sw"
+              ],
+              "title": "Diagonal",
+              "type": "string"
+            },
+            "enabled": {
+              "default": false,
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "pattern": {
+              "default": "diagonal_pair",
+              "enum": [
+                "diagonal_pair",
+                "four_corners"
+              ],
+              "title": "Pattern",
+              "type": "string"
+            },
+            "size_x": {
+              "default": 15.0,
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "title": "Size X",
+              "type": "number"
+            },
+            "size_y": {
+              "default": 15.0,
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "title": "Size Y",
+              "type": "number"
+            }
+          },
+          "title": "PryNotches",
+          "type": "object"
+        },
+        "QualityParams": {
+          "additionalProperties": false,
+          "description": "Preview and export describe the same geometry; they differ only in loft\nsection density and tessellation tolerance.  Leave the overrides at None to\ntake the mode's measured defaults from `traymold.quality.DEFAULTS`.",
+          "properties": {
+            "angular_deflection": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 1.5,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Angular Deflection"
+            },
+            "blend_sections": {
+              "anyOf": [
+                {
+                  "maximum": 256,
+                  "minimum": 4,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "cap on loft sections per edge treatment",
+              "title": "Blend Sections"
+            },
+            "linear_deflection": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 5.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Linear Deflection"
+            },
+            "max_section_sagitta": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 1.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "target loft chord error, mm",
+              "title": "Max Section Sagitta"
+            },
+            "mode": {
+              "default": "export",
+              "enum": [
+                "preview",
+                "export"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          "title": "QualityParams",
+          "type": "object"
+        },
+        "SuperellipseProfile": {
+          "additionalProperties": false,
+          "properties": {
+            "exponent": {
+              "default": 4.0,
+              "exclusiveMinimum": 1.0,
+              "maximum": 6.0,
+              "title": "Exponent",
+              "type": "number"
+            },
+            "kind": {
+              "const": "superellipse",
+              "default": "superellipse",
+              "title": "Kind",
+              "type": "string"
+            },
+            "length": {
+              "default": 175.0,
+              "description": "plan length, X, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Length",
+              "type": "number"
+            },
+            "width": {
+              "default": 105.0,
+              "description": "plan width, Y, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "SuperellipseProfile",
+          "type": "object"
+        },
+        "TrayParams": {
+          "additionalProperties": false,
+          "properties": {
+            "datum": {
+              "default": "inner",
+              "enum": [
+                "inner",
+                "outer"
+              ],
+              "title": "Datum",
+              "type": "string"
+            },
+            "depth": {
+              "default": 25.0,
+              "description": "draw depth, mm",
+              "exclusiveMinimum": 0,
+              "maximum": 300,
+              "title": "Depth",
+              "type": "number"
+            },
+            "draft_angle": {
+              "default": 0.0,
+              "description": "degrees",
+              "maximum": 15.0,
+              "minimum": 0.0,
+              "title": "Draft Angle",
+              "type": "number"
+            },
+            "draft_mode": {
+              "default": "both",
+              "enum": [
+                "both",
+                "plug_only",
+                "cavity_only"
+              ],
+              "title": "Draft Mode",
+              "type": "string"
+            },
+            "profile": {
+              "discriminator": {
+                "mapping": {
+                  "circular_obround": "#/$defs/CircularObroundProfile",
+                  "circular_rect": "#/$defs/CircularRectProfile",
+                  "conic_obround": "#/$defs/ConicObroundProfile",
+                  "conic_rect": "#/$defs/ConicRectProfile",
+                  "ellipse": "#/$defs/EllipseProfile",
+                  "g2_quintic_obround": "#/$defs/G2QuinticObroundProfile",
+                  "g2_quintic_rect": "#/$defs/G2QuinticRectProfile",
+                  "superellipse": "#/$defs/SuperellipseProfile"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/G2QuinticObroundProfile"
+                },
+                {
+                  "$ref": "#/$defs/G2QuinticRectProfile"
+                },
+                {
+                  "$ref": "#/$defs/ConicObroundProfile"
+                },
+                {
+                  "$ref": "#/$defs/ConicRectProfile"
+                },
+                {
+                  "$ref": "#/$defs/CircularObroundProfile"
+                },
+                {
+                  "$ref": "#/$defs/CircularRectProfile"
+                },
+                {
+                  "$ref": "#/$defs/EllipseProfile"
+                },
+                {
+                  "$ref": "#/$defs/SuperellipseProfile"
+                }
+              ],
+              "title": "Profile"
+            }
+          },
+          "title": "TrayParams",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "features": {
+          "$ref": "#/$defs/Features",
+          "default": {
+            "alignment_pins": {
+              "diameter": 6.0,
+              "enabled": false,
+              "height": 8.0,
+              "inset": 15.0,
+              "pattern": "four_corners"
+            },
+            "clamp_holes": {
+              "diagonal": "nw_se",
+              "diameter": 6.0,
+              "enabled": false,
+              "in_female": true,
+              "in_male": false,
+              "inset": 15.0,
+              "pattern": "diagonal_pair",
+              "top_chamfer": 2.0
+            },
+            "pry_notches": {
+              "depth": 8.0,
+              "diagonal": "ne_sw",
+              "enabled": false,
+              "pattern": "diagonal_pair",
+              "size_x": 15.0,
+              "size_y": 15.0
+            }
+          }
+        },
+        "fit": {
+          "$ref": "#/$defs/FitParams",
+          "default": {
+            "clearance": 0.0,
+            "gap_override": null
+          }
+        },
+        "leather": {
+          "$ref": "#/$defs/LeatherParams",
+          "default": {
+            "compression": 0.0,
+            "thickness": 3.0
+          }
+        },
+        "manufacturing": {
+          "$ref": "#/$defs/ManufacturingParams",
+          "default": {
+            "min_wall": 2.0,
+            "nozzle_diameter": 0.4,
+            "pin_fit_clearance": 0.2
+          }
+        },
+        "mold": {
+          "$ref": "#/$defs/MoldParams",
+          "default": {
+            "base_plate_thickness": 15.0,
+            "cavity_plate_thickness": 25.0,
+            "female_entry_blend_bottom": {
+              "kind": "g2_quintic_blend",
+              "setback": 3.0
+            },
+            "female_entry_blend_top": {
+              "kind": "none"
+            },
+            "flange_relief_depth": 0.0,
+            "flange_width": 30.0,
+            "male_floor_blend": {
+              "kind": "g2_quintic_blend",
+              "setback": 5.0
+            },
+            "male_root_blend": {
+              "kind": "circular_fillet",
+              "radius": 1.2
+            },
+            "parts": {
+              "female": true,
+              "male": true
+            },
+            "plate_edge_chamfer": 0.0
+          }
+        },
+        "name": {
+          "default": "untitled",
+          "title": "Name",
+          "type": "string"
+        },
+        "quality": {
+          "$ref": "#/$defs/QualityParams",
+          "default": {
+            "angular_deflection": null,
+            "blend_sections": null,
+            "linear_deflection": null,
+            "max_section_sagitta": null,
+            "mode": "export"
+          }
+        },
+        "schema_version": {
+          "default": "2.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "tray": {
+          "$ref": "#/$defs/TrayParams",
+          "default": {
+            "datum": "inner",
+            "depth": 25.0,
+            "draft_angle": 0.0,
+            "draft_mode": "both",
+            "profile": {
+              "kind": "g2_quintic_obround",
+              "length": 175.0,
+              "width": 105.0
+            }
+          }
+        }
+      },
+      "title": "Params",
+      "type": "object"
     },
-    "quality": {
-     "$ref": "#/$defs/QualityParams",
-     "default": {
-      "mode": "export",
-      "blend_sections": null,
-      "max_section_sagitta": null,
-      "linear_deflection": null,
-      "angular_deflection": null
-     }
-    }
-   },
-   "title": "Params",
-   "type": "object"
-  },
-  "defaults": {
-   "schema_version": "2.0.0",
-   "name": "untitled",
-   "tray": {
-    "profile": {
-     "length": 175.0,
-     "width": 105.0,
-     "kind": "g2_quintic_obround"
-    },
-    "depth": 25.0,
-    "datum": "inner",
-    "draft_angle": 0.0,
-    "draft_mode": "both"
-   },
-   "leather": {
-    "thickness": 3.0,
-    "compression": 0.0
-   },
-   "fit": {
-    "clearance": 0.0,
-    "gap_override": null
-   },
-   "mold": {
-    "parts": {
-     "male": true,
-     "female": true
-    },
-    "flange_width": 30.0,
-    "base_plate_thickness": 15.0,
-    "cavity_plate_thickness": 25.0,
-    "male_root_blend": {
-     "kind": "circular_fillet",
-     "radius": 1.2
-    },
-    "male_floor_blend": {
-     "kind": "g2_quintic_blend",
-     "setback": 5.0
-    },
-    "female_entry_blend_top": {
-     "kind": "g2_quintic_blend",
-     "setback": 3.0
-    },
-    "female_entry_blend_bottom": {
-     "kind": "none"
-    },
-    "plate_edge_chamfer": 0.0,
-    "flange_relief_depth": 0.0
-   },
-   "features": {
-    "clamp_holes": {
-     "enabled": false,
-     "pattern": "diagonal_pair",
-     "diagonal": "nw_se",
-     "diameter": 6.0,
-     "inset": 15.0,
-     "top_chamfer": 2.0,
-     "in_male": false,
-     "in_female": true
-    },
-    "pry_notches": {
-     "enabled": false,
-     "pattern": "diagonal_pair",
-     "diagonal": "ne_sw",
-     "size_x": 15.0,
-     "size_y": 15.0,
-     "depth": 8.0
-    },
-    "alignment_pins": {
-     "enabled": false,
-     "pattern": "four_corners",
-     "diameter": 6.0,
-     "height": 8.0,
-     "inset": 15.0
-    }
-   },
-   "manufacturing": {
-    "pin_fit_clearance": 0.2,
-    "min_wall": 2.0,
-    "nozzle_diameter": 0.4
-   },
-   "quality": {
-    "mode": "export",
-    "blend_sections": null,
-    "max_section_sagitta": null,
-    "linear_deflection": null,
-    "angular_deflection": null
-   }
-  },
-  "ui_hints": {
-   "groups": [
-    {
-     "id": "shape",
-     "title": "Shape",
-     "fields": [
-      "tray.profile"
-     ],
-     "description": "The plan curve the tray is formed around."
-    },
-    {
-     "id": "dimensions",
-     "title": "Dimensions",
-     "fields": [
-      "tray.profile.length",
-      "tray.profile.width",
-      "tray.depth"
-     ],
-     "description": "Inside dimensions of the finished tray, in millimetres."
-    },
-    {
-     "id": "leather",
-     "title": "Leather & fit",
-     "fields": [
-      "leather.thickness",
-      "leather.compression",
-      "fit.clearance",
-      "fit.gap_override"
-     ],
-     "description": "Together these set the forming gap between the two halves."
-    },
-    {
-     "id": "mold",
-     "title": "Mold",
-     "fields": [
-      "mold.flange_width",
-      "mold.base_plate_thickness",
-      "mold.cavity_plate_thickness",
-      "mold.male_root_blend",
-      "mold.male_floor_blend",
-      "mold.female_entry_blend_top",
-      "mold.female_entry_blend_bottom",
-      "mold.plate_edge_chamfer",
-      "mold.flange_relief_depth",
-      "mold.parts"
-     ]
-    },
-    {
-     "id": "features",
-     "title": "Features",
-     "fields": [
-      "features.clamp_holes",
-      "features.pry_notches",
-      "features.alignment_pins"
-     ]
-    },
-    {
-     "id": "manufacturing",
-     "title": "Manufacturing",
-     "fields": [
-      "manufacturing.pin_fit_clearance",
-      "manufacturing.min_wall",
-      "manufacturing.nozzle_diameter"
-     ]
-    },
-    {
-     "id": "advanced",
-     "title": "Advanced",
-     "fields": [
-      "tray.draft_angle",
-      "tray.draft_mode",
-      "tray.datum",
-      "quality"
-     ],
-     "collapsed": true
-    }
-   ],
-   "hidden": [
-    "schema_version",
-    "name"
-   ],
-   "fields": {
-    "tray.profile.length": {
-     "unit": "mm",
-     "step": 1,
-     "slider": [
-      40,
-      400
-     ]
-    },
-    "tray.profile.width": {
-     "unit": "mm",
-     "step": 1,
-     "slider": [
-      40,
-      300
-     ]
-    },
-    "tray.profile.corner_setback": {
-     "unit": "mm",
-     "step": 1
-    },
-    "tray.profile.corner_radius": {
-     "unit": "mm",
-     "step": 1
-    },
-    "tray.profile.rho": {
-     "step": 0.05
-    },
-    "tray.profile.exponent": {
-     "step": 0.25
-    },
-    "tray.depth": {
-     "unit": "mm",
-     "step": 0.5,
-     "slider": [
-      5,
-      120
-     ]
-    },
-    "tray.datum": {
-     "disabled_values": {
-      "outer": {
-       "code": "E-DATUM-001",
-       "reason": "Outer-dimension input is planned but not implemented. The canonical datum is the inner (male) forming profile."
-      }
-     }
-    },
-    "tray.draft_angle": {
-     "unit": "deg",
-     "step": 0.5,
-     "experimental": true,
-     "requires": "allow_experimental",
-     "note": "Draft is experimental. The current build holds a constant profile-plane gap, so the normal forming gap is nominal x cos(draft angle) - 45.6 um smaller at 10 deg on a 3 mm gap. The semantic contract is not decided."
-    },
-    "tray.draft_mode": {
-     "experimental": true,
-     "requires": "allow_experimental"
-    },
-    "leather.thickness": {
-     "unit": "mm",
-     "step": 0.1,
-     "slider": [
-      0.5,
-      8
-     ]
-    },
-    "leather.compression": {
-     "step": 0.01,
-     "slider": [
-      0,
-      0.4
-     ],
-     "help": "Fraction the wet leather is deliberately squeezed."
-    },
-    "fit.clearance": {
-     "unit": "mm",
-     "step": 0.05,
-     "slider": [
-      -0.5,
-      2
-     ]
-    },
-    "fit.gap_override": {
-     "unit": "mm",
-     "step": 0.1,
-     "help": "Set the forming gap directly, ignoring the formula."
-    },
-    "mold.flange_width": {
-     "unit": "mm",
-     "step": 1,
-     "slider": [
-      8,
-      80
-     ]
-    },
-    "mold.base_plate_thickness": {
-     "unit": "mm",
-     "step": 1,
-     "slider": [
-      3,
-      40
-     ]
-    },
-    "mold.cavity_plate_thickness": {
-     "unit": "mm",
-     "step": 1,
-     "slider": [
-      3,
-      80
-     ]
-    },
-    "mold.plate_edge_chamfer": {
-     "unit": "mm",
-     "step": 0.5,
-     "unimplemented": true
-    },
-    "mold.flange_relief_depth": {
-     "unit": "mm",
-     "step": 0.5,
-     "unimplemented": true
-    },
-    "manufacturing.pin_fit_clearance": {
-     "unit": "mm",
-     "step": 0.05
-    },
-    "manufacturing.min_wall": {
-     "unit": "mm",
-     "step": 0.5
-    },
-    "manufacturing.nozzle_diameter": {
-     "unit": "mm",
-     "step": 0.1
-    }
-   },
-   "derived": [
-    {
-     "key": "forming_gap",
-     "label": "Forming gap",
-     "unit": "mm",
-     "precision": 3
-    },
-    {
-     "key": "plate_length",
-     "label": "Plate length",
-     "unit": "mm",
-     "precision": 1
-    },
-    {
-     "key": "plate_width",
-     "label": "Plate width",
-     "unit": "mm",
-     "precision": 1
-    },
-    {
-     "key": "closed_height",
-     "label": "Closed height",
-     "unit": "mm",
-     "precision": 1
-    },
-    {
-     "key": "female_flange_width",
-     "label": "Female flange",
-     "unit": "mm",
-     "precision": 1
-    },
-    {
-     "key": "corner_setback",
-     "label": "Corner setback",
-     "unit": "mm",
-     "precision": 1
-    },
-    {
-     "key": "corner_radius_min",
-     "label": "Tightest radius",
-     "unit": "mm",
-     "precision": 2
-    },
-    {
-     "key": "vertical_wall_height",
-     "label": "Vertical wall",
-     "unit": "mm",
-     "precision": 1
-    },
-    {
-     "key": "max_inward_offset",
-     "label": "Max inward offset",
-     "unit": "mm",
-     "precision": 2
-    }
-   ]
-  }
- },
- "presets": [
-  {
-   "name": "ref-4x7",
-   "title": "Reference 4x7 (STL revision)",
-   "description": "The reference pair with the clamp holes and pry notches present in the STL files.",
-   "params": {
+    "model_version": "0.4.0",
     "schema_version": "2.0.0",
-    "name": "ref-4x7-wetmold",
-    "tray": {
-     "profile": {
-      "length": 175.0,
-      "width": 105.0,
-      "kind": "g2_quintic_obround"
-     },
-     "depth": 25.0,
-     "datum": "inner",
-     "draft_angle": 0.0,
-     "draft_mode": "both"
-    },
-    "leather": {
-     "thickness": 3.0,
-     "compression": 0.0
-    },
-    "fit": {
-     "clearance": 0.0,
-     "gap_override": null
-    },
-    "mold": {
-     "parts": {
-      "male": true,
-      "female": true
-     },
-     "flange_width": 30.0,
-     "base_plate_thickness": 15.0,
-     "cavity_plate_thickness": 25.0,
-     "male_root_blend": {
-      "kind": "circular_fillet",
-      "radius": 1.2
-     },
-     "male_floor_blend": {
-      "kind": "g2_quintic_blend",
-      "setback": 5.0
-     },
-     "female_entry_blend_top": {
-      "kind": "g2_quintic_blend",
-      "setback": 3.0
-     },
-     "female_entry_blend_bottom": {
-      "kind": "none"
-     },
-     "plate_edge_chamfer": 0.0,
-     "flange_relief_depth": 0.0
-    },
-    "features": {
-     "clamp_holes": {
-      "enabled": true,
-      "pattern": "diagonal_pair",
-      "diagonal": "nw_se",
-      "diameter": 6.0,
-      "inset": 15.0,
-      "top_chamfer": 2.0,
-      "in_male": false,
-      "in_female": true
-     },
-     "pry_notches": {
-      "enabled": true,
-      "pattern": "diagonal_pair",
-      "diagonal": "ne_sw",
-      "size_x": 15.0,
-      "size_y": 15.0,
-      "depth": 8.0
-     },
-     "alignment_pins": {
-      "enabled": false,
-      "pattern": "four_corners",
-      "diameter": 6.0,
-      "height": 8.0,
-      "inset": 15.0
-     }
-    },
-    "manufacturing": {
-     "pin_fit_clearance": 0.2,
-     "min_wall": 2.0,
-     "nozzle_diameter": 0.4
-    },
-    "quality": {
-     "mode": "export",
-     "blend_sections": null,
-     "max_section_sagitta": null,
-     "linear_deflection": null,
-     "angular_deflection": null
+    "ui_hints": {
+      "conflicts": [
+        {
+          "allowed": [
+            "none"
+          ],
+          "code": "E-PROFILE-ROOT-BLEND",
+          "fallback": "none",
+          "field": "mold.male_root_blend",
+          "reason": "Not available on an ellipse - the plug's root-blend fuse returns an empty solid on a curve with no straight runs.",
+          "when": {
+            "field": "tray.profile",
+            "kind_in": [
+              "ellipse"
+            ]
+          }
+        }
+      ],
+      "derived": [
+        {
+          "key": "forming_gap",
+          "label": "Forming gap",
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "key": "plate_length",
+          "label": "Plate length",
+          "precision": 1,
+          "unit": "mm"
+        },
+        {
+          "key": "plate_width",
+          "label": "Plate width",
+          "precision": 1,
+          "unit": "mm"
+        },
+        {
+          "key": "closed_height",
+          "label": "Closed height",
+          "precision": 1,
+          "unit": "mm"
+        },
+        {
+          "key": "female_flange_width",
+          "label": "Female flange",
+          "precision": 1,
+          "unit": "mm"
+        },
+        {
+          "key": "corner_setback",
+          "label": "Corner setback",
+          "precision": 1,
+          "unit": "mm"
+        },
+        {
+          "key": "corner_radius_min",
+          "label": "Tightest radius",
+          "precision": 2,
+          "unit": "mm"
+        },
+        {
+          "key": "vertical_wall_height",
+          "label": "Vertical wall",
+          "precision": 1,
+          "unit": "mm"
+        },
+        {
+          "key": "max_inward_offset",
+          "label": "Max inward offset",
+          "precision": 2,
+          "unit": "mm"
+        }
+      ],
+      "fields": {
+        "fit.clearance": {
+          "slider": [
+            -0.5,
+            2
+          ],
+          "step": 0.05,
+          "unit": "mm"
+        },
+        "fit.gap_override": {
+          "help": "Set the forming gap directly, ignoring the formula.",
+          "step": 0.1,
+          "unit": "mm"
+        },
+        "leather.compression": {
+          "help": "Fraction the wet leather is deliberately squeezed.",
+          "slider": [
+            0,
+            0.4
+          ],
+          "step": 0.01
+        },
+        "leather.thickness": {
+          "slider": [
+            0.5,
+            8
+          ],
+          "step": 0.1,
+          "unit": "mm"
+        },
+        "manufacturing.min_wall": {
+          "step": 0.5,
+          "unit": "mm"
+        },
+        "manufacturing.nozzle_diameter": {
+          "step": 0.1,
+          "unit": "mm"
+        },
+        "manufacturing.pin_fit_clearance": {
+          "step": 0.05,
+          "unit": "mm"
+        },
+        "mold.base_plate_thickness": {
+          "slider": [
+            3,
+            40
+          ],
+          "step": 1,
+          "unit": "mm"
+        },
+        "mold.cavity_plate_thickness": {
+          "slider": [
+            3,
+            80
+          ],
+          "step": 1,
+          "unit": "mm"
+        },
+        "mold.flange_relief_depth": {
+          "step": 0.5,
+          "unimplemented": true,
+          "unit": "mm"
+        },
+        "mold.flange_width": {
+          "slider": [
+            8,
+            80
+          ],
+          "step": 1,
+          "unit": "mm"
+        },
+        "mold.plate_edge_chamfer": {
+          "step": 0.5,
+          "unimplemented": true,
+          "unit": "mm"
+        },
+        "tray.datum": {
+          "disabled_values": {
+            "outer": {
+              "code": "E-DATUM-001",
+              "reason": "Outer-dimension input is planned but not implemented. The canonical datum is the inner (male) forming profile."
+            }
+          }
+        },
+        "tray.depth": {
+          "slider": [
+            5,
+            120
+          ],
+          "step": 0.5,
+          "unit": "mm"
+        },
+        "tray.draft_angle": {
+          "experimental": true,
+          "note": "Draft is experimental. The current build holds a constant profile-plane gap, so the normal forming gap is nominal x cos(draft angle) - 45.6 um smaller at 10 deg on a 3 mm gap. The semantic contract is not decided.",
+          "requires": "allow_experimental",
+          "step": 0.5,
+          "unit": "deg"
+        },
+        "tray.draft_mode": {
+          "experimental": true,
+          "requires": "allow_experimental"
+        },
+        "tray.profile": {
+          "disabled_values": {
+            "superellipse": {
+              "code": "E-PROFILE-ENTRY-BLEND",
+              "reason": "Not available yet \u2014 the cavity's entry blend and the plug's floor blend both fail on this curve."
+            }
+          }
+        },
+        "tray.profile.corner_radius": {
+          "step": 1,
+          "unit": "mm"
+        },
+        "tray.profile.corner_setback": {
+          "step": 1,
+          "unit": "mm"
+        },
+        "tray.profile.exponent": {
+          "step": 0.25
+        },
+        "tray.profile.length": {
+          "slider": [
+            40,
+            400
+          ],
+          "step": 1,
+          "unit": "mm"
+        },
+        "tray.profile.rho": {
+          "step": 0.05
+        },
+        "tray.profile.width": {
+          "slider": [
+            40,
+            300
+          ],
+          "step": 1,
+          "unit": "mm"
+        }
+      },
+      "groups": [
+        {
+          "description": "The plan curve the tray is formed around.",
+          "fields": [
+            "tray.profile"
+          ],
+          "id": "shape",
+          "title": "Shape"
+        },
+        {
+          "description": "Inside dimensions of the finished tray, in millimetres.",
+          "fields": [
+            "tray.profile.length",
+            "tray.profile.width",
+            "tray.depth"
+          ],
+          "id": "dimensions",
+          "title": "Dimensions"
+        },
+        {
+          "description": "Together these set the forming gap between the two halves.",
+          "fields": [
+            "leather.thickness",
+            "leather.compression",
+            "fit.clearance",
+            "fit.gap_override"
+          ],
+          "id": "leather",
+          "title": "Leather & fit"
+        },
+        {
+          "fields": [
+            "mold.flange_width",
+            "mold.base_plate_thickness",
+            "mold.cavity_plate_thickness",
+            "mold.male_root_blend",
+            "mold.male_floor_blend",
+            "mold.female_entry_blend_top",
+            "mold.female_entry_blend_bottom",
+            "mold.plate_edge_chamfer",
+            "mold.flange_relief_depth",
+            "mold.parts"
+          ],
+          "id": "mold",
+          "title": "Mold"
+        },
+        {
+          "fields": [
+            "features.clamp_holes",
+            "features.pry_notches",
+            "features.alignment_pins"
+          ],
+          "id": "features",
+          "title": "Features"
+        },
+        {
+          "fields": [
+            "manufacturing.pin_fit_clearance",
+            "manufacturing.min_wall",
+            "manufacturing.nozzle_diameter"
+          ],
+          "id": "manufacturing",
+          "title": "Manufacturing"
+        },
+        {
+          "collapsed": true,
+          "fields": [
+            "tray.draft_angle",
+            "tray.draft_mode",
+            "tray.datum",
+            "quality"
+          ],
+          "id": "advanced",
+          "title": "Advanced"
+        }
+      ],
+      "hidden": [
+        "schema_version",
+        "name"
+      ]
     }
-   }
-  },
-  {
-   "name": "ref-4x7-step",
-   "title": "Reference 4x7 (STEP revision)",
-   "description": "The reference shape as exported to STEP: no clamp holes, no pry notches.",
-   "params": {
-    "schema_version": "2.0.0",
-    "name": "ref-4x7-step",
-    "tray": {
-     "profile": {
-      "length": 175.0,
-      "width": 105.0,
-      "kind": "g2_quintic_obround"
-     },
-     "depth": 25.0,
-     "datum": "inner",
-     "draft_angle": 0.0,
-     "draft_mode": "both"
-    },
-    "leather": {
-     "thickness": 3.0,
-     "compression": 0.0
-    },
-    "fit": {
-     "clearance": 0.0,
-     "gap_override": null
-    },
-    "mold": {
-     "parts": {
-      "male": true,
-      "female": true
-     },
-     "flange_width": 30.0,
-     "base_plate_thickness": 15.0,
-     "cavity_plate_thickness": 25.0,
-     "male_root_blend": {
-      "kind": "circular_fillet",
-      "radius": 1.2
-     },
-     "male_floor_blend": {
-      "kind": "g2_quintic_blend",
-      "setback": 5.0
-     },
-     "female_entry_blend_top": {
-      "kind": "g2_quintic_blend",
-      "setback": 3.0
-     },
-     "female_entry_blend_bottom": {
-      "kind": "none"
-     },
-     "plate_edge_chamfer": 0.0,
-     "flange_relief_depth": 0.0
-    },
-    "features": {
-     "clamp_holes": {
-      "enabled": false,
-      "pattern": "diagonal_pair",
-      "diagonal": "nw_se",
-      "diameter": 6.0,
-      "inset": 15.0,
-      "top_chamfer": 2.0,
-      "in_male": false,
-      "in_female": true
-     },
-     "pry_notches": {
-      "enabled": false,
-      "pattern": "diagonal_pair",
-      "diagonal": "ne_sw",
-      "size_x": 15.0,
-      "size_y": 15.0,
-      "depth": 8.0
-     },
-     "alignment_pins": {
-      "enabled": false,
-      "pattern": "four_corners",
-      "diameter": 6.0,
-      "height": 8.0,
-      "inset": 15.0
-     }
-    },
-    "manufacturing": {
-     "pin_fit_clearance": 0.2,
-     "min_wall": 2.0,
-     "nozzle_diameter": 0.4
-    },
-    "quality": {
-     "mode": "export",
-     "blend_sections": null,
-     "max_section_sagitta": null,
-     "linear_deflection": null,
-     "angular_deflection": null
-    }
-   }
   }
- ]
 }

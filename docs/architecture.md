@@ -501,7 +501,7 @@ explicitly refused (`E-DATUM-001`) rather than silently reinterpreted.
 
 | shape | what fails | status |
 |---|---|---|
-| ellipse | the root-blend fuse returns an empty solid — the collar's top wire *is* the plug wall, and an ellipse has no straight runs to make that contact planar | refused **with the root blend on**; builds fully without it, preview and export, both halves |
+| ellipse | the root-blend fuse returns an empty solid — the collar's top wire *is* the plug wall, and an ellipse has no straight runs to make that contact planar | **constrained**: with an ellipse selected the form allows only `none` for the root blend and settles the document to it, so the pair is never assembled. The API still refuses it for callers that are not the form. Builds fully otherwise, preview and export, both halves |
 | superellipse | the entry-blend cut leaves a stray shell (§7.8a), *and* the floor blend cannot be lofted above 8 sections — export uses 35 | refused **outright**: turning the entry blend off gets a preview that cannot be exported, which is worse than a refusal |
 
 Both are curves with continuously varying curvature and no straight segments,

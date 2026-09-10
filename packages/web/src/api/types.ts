@@ -75,6 +75,15 @@ export interface UiHints {
   hidden: string[]
   fields: Record<string, UiHintField>
   derived: { key: string; label: string; unit?: string; precision?: number }[]
+  /** Combinations the backend cannot build. See `form/conflicts`. */
+  conflicts?: {
+    code: string
+    when: { field: string; kind_in: string[] }
+    field: string
+    allowed: string[]
+    fallback: string
+    reason: string
+  }[]
 }
 
 export interface SchemaResponse {

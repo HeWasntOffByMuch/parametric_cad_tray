@@ -161,6 +161,11 @@ export interface Group {
   exclude: Set<string>
 }
 
+/** Every field by path, variants' children included. */
+export function fieldIndex(jsonSchema: Json): Map<string, Field> {
+  return flatten(rootFields(jsonSchema))
+}
+
 function flatten(fields: Field[], out: Map<string, Field> = new Map()): Map<string, Field> {
   for (const field of fields) {
     out.set(field.path, field)
