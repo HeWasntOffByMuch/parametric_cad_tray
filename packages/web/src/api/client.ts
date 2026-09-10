@@ -1,6 +1,6 @@
 import { apiUrl } from '../config'
 import { ids } from '../analytics'
-import type { Job, Json, Preset, SchemaResponse, ValidateResponse } from './types'
+import type { Diagnostic, Job, Json, Preset, SchemaResponse, ValidateResponse } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -39,11 +39,32 @@ function safeJson(text: string) {
 }
 
 function errorMessage(body: any, status: number): string {
+  // A refusal carries the field it is about, and that sentence is the only part
+  // anyone can act on. Lead with it rather than with the envelope's summary.
+  const [first] = diagnosticsIn(body)
+  if (first) return first.field ? `${first.field} ${first.message}` : first.message
   if (body?.detail?.error?.message) return body.detail.error.message
   if (typeof body?.detail === 'string') return body.detail
   if (status === 429) return 'too many build requests; wait a moment'
   if (status === 413) return 'that parameter document is too large'
   return `request failed (${status})`
+}
+
+function diagnosticsIn(body: any): Diagnostic[] {
+  const list = body?.detail?.error?.diagnostics
+  return Array.isArray(list) ? list : []
+}
+
+/**
+ * The diagnostics a rejected request came back with, if any.
+ *
+ * A 422 is the server declining to work with the document that is on screen, so
+ * its diagnostics describe *that* document - which makes them the ones to show,
+ * on the fields they name. Anything else (offline, a 500, a rate limit) has
+ * nothing field-shaped in it and yields none.
+ */
+export function diagnosticsOf(error: unknown): Diagnostic[] {
+  return error instanceof ApiError ? diagnosticsIn(error.body) : []
 }
 
 export const api = {

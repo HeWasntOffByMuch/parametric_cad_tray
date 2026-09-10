@@ -194,6 +194,38 @@ stops burning a worker.
 
 Errors block Preview and Export; warnings do not.
 
+### Where an error is shown, and why that is three places
+
+Reported from a phone: *"422 everywhere, nothing works, errors at the bottom so
+I can't see them and they're just 422s with no action to take."* Three faults
+met in that one sentence, and they are worth keeping apart.
+
+**Nothing to show.** A value outside its bounds is refused by `/api/validate` as
+well as by the build (both take the same model), so the app was left with no
+diagnostics at all — and the document is stored, so a reload reproduced it. The
+API now answers a rejected body with diagnostics; see api.md §3. The client
+keeps them apart from the last validation result, because a rejection describes
+the parameters as they are now while a validation that predates it does not.
+
+**Nowhere to see it.** Diagnostics render inline on their field and in the
+diagnostics panel. Below 1200px both are in the column *under* the viewer: on a
+390 × 664 phone the field sat 1656px down a 4054px page and the panel at 3327px,
+so an invalid parameter read as "Preview out of date" and nothing else. The
+first blocking error is now also in the floating status bar, which is over the
+viewer at every width, with **Show me** to scroll to the field and focus it. A
+group that owns an error opens itself, so the jump cannot land on a control that
+is not rendered.
+
+**Nothing to do about it.** `request failed (422)` is a status code. The client
+now leads with the first diagnostic's own sentence, which carries the bound
+(`must be greater than 0 (this is 0)`) or the remedy (`Set
+mold.male_root_blend to none…`).
+
+Related, and found in the same pass: `value ?? value === 0 ? …` is not the zero
+check it reads as — `??` only falls through on null, so a value of **0** was
+falsy at the conditional and rendered as an empty box. Compression and clearance
+are 0 by default, so two fields shipped looking unset.
+
 ### Not building the same thing twice
 
 `generatePreview` is idempotent for the parameters already on screen. Two paths

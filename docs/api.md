@@ -142,6 +142,47 @@ dominate a 2.5 s preview. Workers are started and warmed at app startup
 | `export_failure` | `OSError` and friends while writing artifacts |
 | `cancelled` | a cancel arrived before or during the build |
 
+### A body the model will not parse
+
+Every endpoint takes the same `params` model, so one number outside its bounds
+is refused identically by `/api/validate`, `/api/preview` and `/api/export`.
+FastAPI's own answer to that is a 422 whose `detail` is a list of pydantic
+dicts, and shipping it had three consequences, each worse than the last:
+
+* the browser knows one error envelope, `detail.error.{kind,message,diagnostics}`,
+  and rendered none of that list — it showed `request failed (422)`;
+* pydantic locates the error at
+  `["body","params","tray","profile","g2_quintic_obround","length"]` while the
+  form addresses that input as `tray.profile.length`, so nothing could be
+  attached to a field even if it had been readable;
+* **validate went down with the build.** The endpoint whose entire job is to
+  explain what is wrong failed on exactly the documents that need explaining, so
+  the app had no diagnostics at all — nothing inline, nothing blocking the
+  build button, and a stored document that reproduced it on reload.
+
+`trayapi.request_errors` answers it in the same envelope as everything else,
+with the field named the way the form names it:
+
+```json
+{"detail": {"error": {"kind": "validation_error",
+  "message": "tray.profile.length must be greater than 0 (this is 0)",
+  "diagnostics": [{"code": "E-RANGE", "severity": "error",
+                   "field": "tray.profile.length",
+                   "message": "must be greater than 0 (this is 0)"}]}}}
+```
+
+| code | pydantic types |
+|---|---|
+| `E-RANGE` | `greater_than`, `greater_than_equal`, `less_than`, `less_than_equal`, `multiple_of` |
+| `E-REQUIRED` | `missing` |
+| `E-VARIANT` | `union_tag_invalid`, `union_tag_not_found`, `literal_error` |
+| `E-INVALID` | everything else, keeping pydantic's own sentence |
+
+The variant tag is dropped from the path because the form shows one variant at
+a time and hangs its fields directly off the union field. That is safe only
+while no field is named like a tag, so `test_request_errors` asserts it across
+the whole schema rather than leaving it as an assumption.
+
 ---
 
 ## 4. Cache key

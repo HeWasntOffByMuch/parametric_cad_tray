@@ -1,5 +1,5 @@
 import type { PreviewState } from '../state/useDesign'
-import type { Job } from '../api/types'
+import type { Diagnostic, Job } from '../api/types'
 
 /**
  * A dot and a sentence, not a coloured chip announcing a state name.
@@ -22,6 +22,8 @@ export function PreviewStatus({
   job,
   validating,
   transportError,
+  errors,
+  onReveal,
   onGenerate,
   onCancel,
   canGenerate,
@@ -30,25 +32,33 @@ export function PreviewStatus({
   job: Job | null
   validating: boolean
   transportError: string | null
+  /** Blocking diagnostics. This bar floats over the viewer and is on screen at
+   *  every width, which the form and the diagnostics panel are not: stacked on
+   *  a phone they sit several screens down, so an invalid parameter used to
+   *  read as "Preview out of date" and nothing else. */
+  errors: Diagnostic[]
+  onReveal: (field: string) => void
   onGenerate: () => void
   onCancel: () => void
   canGenerate: boolean
 }) {
-  const copy = COPY[state]
-  const detail =
-    state === 'generating'
-      ? job?.status ?? 'queued'
-      : state === 'failed'
-        ? job?.error?.message ?? transportError ?? 'the build did not complete'
-        : job?.cached
-          ? 'served from cache'
-          : null
+  const blocking = errors[0] ?? null
+  const copy = blocking ? { label: 'Cannot build these parameters', tone: 'bad' } : COPY[state]
+  const detail = blocking
+    ? null
+    : state === 'generating'
+    ? job?.status ?? 'queued'
+    : state === 'failed'
+      ? job?.error?.message ?? transportError ?? 'the build did not complete'
+      : job?.cached
+        ? 'served from cache'
+        : null
 
   // Only while generating, and only once the worker has actually reported a
   // stage. Before that there is nothing true to draw: a bar sitting at 0 is a
   // promise, and one that animates on its own is a lie.
   const fraction =
-    state === 'generating' && typeof job?.progress === 'number' ? job.progress : null
+    !blocking && state === 'generating' && typeof job?.progress === 'number' ? job.progress : null
   const percent = fraction === null ? null : Math.round(fraction * 100)
 
   return (
@@ -63,7 +73,7 @@ export function PreviewStatus({
           {percent}%
         </span>
       )}
-      {validating && <span className="detail">checking…</span>}
+      {validating && !blocking && <span className="detail">checking…</span>}
       <span className="spacer" />
       {state === 'generating' ? (
         <button type="button" onClick={onCancel}>
@@ -87,6 +97,21 @@ export function PreviewStatus({
           Update preview
         </button>
       )}
+      {blocking && (
+        <p className="status-problem" data-testid="blocking-error">
+          <span className="what" title={`${blocking.field} ${blocking.message}`}>
+            <strong>{fieldLabel(blocking.field)}</strong> {blocking.message}
+          </span>
+          <button type="button" onClick={() => onReveal(blocking.field)}>
+            Show me
+          </button>
+          {errors.length > 1 && (
+            <span className="detail" data-testid="blocking-more">
+              +{errors.length - 1} more
+            </span>
+          )}
+        </p>
+      )}
       {fraction !== null && (
         <div
           className="progress-track"
@@ -102,4 +127,12 @@ export function PreviewStatus({
       )}
     </div>
   )
+}
+
+
+/** `tray.profile.length` is a path, not a name. Show the leaf, which is what
+ *  the field is labelled with on screen. */
+function fieldLabel(path: string): string {
+  const leaf = path.split('.').pop() ?? path
+  return leaf.replace(/_/g, ' ')
 }

@@ -57,7 +57,11 @@ export function NumberWidget({ field, value, hint, context, diagnostics, disable
   // changes underneath (a preset, a shared link) appears immediately without an
   // effect to synchronise.
   const [draft, setDraft] = useState<string | null>(null)
-  const shown = draft ?? (value ?? value === 0 ? String(value) : '')
+  // `value ?? value === 0` reads as the zero check it was meant to be but is
+  // not one: ?? only falls through on null, so a value of 0 reached the
+  // conditional as 0, which is falsy, and rendered as an empty box. Compression
+  // and clearance are 0 by default, so two fields shipped looking unset.
+  const shown = draft ?? (value === null || value === undefined ? '' : String(value))
   const { min, max } = bounds(field)
   const step = hint?.step ?? (field.kind === 'integer' ? 1 : 0.1)
   const slider = hint?.slider

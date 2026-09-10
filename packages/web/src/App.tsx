@@ -109,6 +109,26 @@ export function App({ options }: { options?: DesignOptions } = {}) {
   const stale = design.previewState === 'dirty'
   const blocked = design.errors.length > 0
 
+  /**
+   * Take the user to the field a diagnostic is about.
+   *
+   * Stacked on a phone the form is several screens below the viewer, so telling
+   * someone which parameter is wrong is only half an answer - the other half is
+   * putting it in front of them. `SchemaForm` opens the group that owns an
+   * error, so by the time this runs the field is rendered; a diagnostic that
+   * names a group rather than a leaf falls back to the nearest ancestor that is.
+   */
+  const reveal = useCallback((field: string) => {
+    const parts = field.split('.')
+    for (let i = parts.length; i > 0; i--) {
+      const at = document.querySelector<HTMLElement>(`[data-field="${parts.slice(0, i).join('.')}"]`)
+      if (!at) continue
+      at.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      at.querySelector<HTMLElement>('input, select, button, [role="combobox"]')?.focus({ preventScroll: true })
+      return
+    }
+  }, [])
+
   const presetOptions = useMemo(
     () => presets.filter((p) => p.name === DEFAULT_PRESET || p.name.startsWith('ref-')),
     [presets],
@@ -208,6 +228,8 @@ export function App({ options }: { options?: DesignOptions } = {}) {
           job={design.previewJob}
           validating={design.validating}
           transportError={design.transportError}
+          errors={design.errors}
+          onReveal={reveal}
           onGenerate={actions.generatePreview}
           onCancel={actions.cancelPreview}
           // Nothing to build when the preview already matches the parameters:

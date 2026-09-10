@@ -15,6 +15,11 @@ export class FakeBackend {
   jobs = new Map<string, Job>()
   /** overrides, applied in order of specificity */
   validateResponse: ((params: Json) => any) | null = null
+  /** A body the API will not parse. Both endpoints take the same parameter
+   *  model, so a value outside its bounds is refused by validate and preview
+   *  alike - which is the case that used to leave the app with no diagnostics
+   *  at all. Set the diagnostics; the harness wraps them in the API's envelope. */
+  rejectWith: ((params: Json) => any[] | null) | null = null
   /** Public counters the app may display; null means the endpoint is absent. */
   stats: any = null
   statsError = false
@@ -101,8 +106,18 @@ export class FakeBackend {
       }
       if (url.endsWith('/api/presets')) return ok(PRESETS)
 
+      const rejection = (params: Json) => {
+        const diagnostics = backend.rejectWith?.(params)
+        if (!diagnostics?.length) return null
+        const [first] = diagnostics
+        return ok({ detail: { error: { kind: 'validation_error',
+          message: `${first.field} ${first.message}`, diagnostics } } }, 422)
+      }
+
       if (url.endsWith('/api/validate')) {
         backend.validateCalls.push(body.params)
+        const refused = rejection(body.params)
+        if (refused) return refused
         const custom = backend.validateResponse?.(body.params)
         return ok(custom ?? {
           valid: true, diagnostics: [], derived: { forming_gap: 3.0, plate_length: 235.0 },
@@ -112,6 +127,8 @@ export class FakeBackend {
 
       if (url.endsWith('/api/preview')) {
         backend.previewCalls.push(body.params)
+        const refused = rejection(body.params)
+        if (refused) return refused
         const id = `job-${++backend.counter}`
         const job = backend.previewResponse?.(body.params, id) ?? backend.job({
           id, params_hash: backend.hashOf(body.params), artifacts: backend.glbArtifact(),

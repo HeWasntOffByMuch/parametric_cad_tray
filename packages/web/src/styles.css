@@ -313,7 +313,43 @@ fieldset.object legend {
   right: var(--s3);
   padding: var(--s2) var(--s2) var(--s2) var(--s3);
   min-height: 42px;
+  /* The blocking-error line takes a row of its own rather than squeezing the
+     status row, which at phone width has nothing left to give. */
+  flex-wrap: wrap;
 }
+
+/* Why the build cannot run, in the one strip that is on screen at every width.
+   The form and the diagnostics panel both say it too, and on a phone both are
+   scrolled far out of sight. */
+.status-problem {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0;
+  padding-top: var(--s2);
+  border-top: 1px solid var(--line-soft);
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.status-problem .what {
+  flex: 1;
+  min-width: 0;
+  /* Long enough for the messages that carry their fix in a second sentence,
+     bounded so a pathological one cannot swallow the viewer. Past that it
+     scrolls: truncating the tail would cut off exactly the part that says what
+     to change, which is the whole reason this line exists. A gradient mask over
+     the last line was tried as an overflow hint and reverted - CSS cannot tell
+     whether the text overflows, so it dimmed the one-line messages that are the
+     common case. The scrollbar, the `title` and Show me are the affordances. */
+  max-height: 5.6em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.status-problem strong { color: var(--bad); font-weight: 600; }
+.status-problem button { flex: none; }
+.status-problem .detail { flex: none; }
 .viewer-controls {
   bottom: var(--s3);
   left: 50%;

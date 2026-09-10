@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, api } from '../api/client'
+import { ApiError, api, diagnosticsOf } from '../api/client'
 import { followJob } from '../api/jobStream'
 import type { Diagnostic, Job, Json, ValidateResponse } from '../api/types'
 import { saveLocal, writeHash } from './urlState'
@@ -127,6 +127,10 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
   const [previewedFingerprint, setPreviewedFingerprint] = useState<string | null>(null)
   const [previewState, setPreviewState] = useState<PreviewState>('empty')
   const [transportError, setTransportError] = useState<string | null>(null)
+  // Diagnostics from a document the server would not even parse. Kept apart
+  // from `validation` because they describe the parameters as they are now,
+  // while a validation result that predates the rejection describes older ones.
+  const [rejected, setRejected] = useState<Diagnostic[]>([])
   const [allowExperimental, setAllowExperimental] = useState(false)
 
   const paramsRef = useRef(params)
@@ -172,10 +176,15 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
       try {
         const result = await api.validate(params, allowExperimental, controller.signal)
         setValidation(result)
+        setRejected([])
         setTransportError(null)
       } catch (error) {
         if ((error as any)?.name === 'AbortError') return
-        setTransportError((error as ApiError).message)
+        // A rejected body is not a transport failure: the server answered, and
+        // it said which field it could not accept. Show that on the field.
+        const diagnostics = diagnosticsOf(error)
+        setRejected(diagnostics)
+        setTransportError(diagnostics.length ? null : (error as ApiError).message)
       } finally {
         setValidating(false)
       }
@@ -233,7 +242,9 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
       runningJobId.current = null
       inFlight.current = null
       setPreviewState(onScreen ? 'dirty' : 'failed')
-      setTransportError((error as ApiError).message)
+      const diagnostics = diagnosticsOf(error)
+      if (diagnostics.length) setRejected(diagnostics)
+      setTransportError(diagnostics.length ? null : (error as ApiError).message)
       return
     }
     runningJobId.current = job.state === 'complete' ? null : job.id
@@ -342,7 +353,8 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
     [],
   )
 
-  const diagnostics = validation?.diagnostics ?? []
+  // A rejection is about the current document; a stored validation may not be.
+  const diagnostics = rejected.length ? rejected : validation?.diagnostics ?? []
   const state: DesignState = useMemo(
     () => ({
       params,
@@ -350,7 +362,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
       validating,
       diagnostics,
       errors: diagnostics.filter((d) => d.severity === 'error'),
-      valid: validation?.valid ?? false,
+      valid: rejected.length ? false : validation?.valid ?? false,
       previewState,
       previewJob,
       previewUrls,
@@ -359,7 +371,7 @@ export function useDesign(initial: Json | null, options: DesignOptions = {}): [D
       transportError,
       allowExperimental,
     }),
-    [params, validation, validating, previewState, previewJob, previewUrls, previewedFingerprint, currentHash, transportError, allowExperimental],
+    [params, validation, validating, rejected, previewState, previewJob, previewUrls, previewedFingerprint, currentHash, transportError, allowExperimental],
   )
 
   return [

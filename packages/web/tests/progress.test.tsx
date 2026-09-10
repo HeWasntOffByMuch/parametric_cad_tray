@@ -18,6 +18,8 @@ const show = (props: Partial<Parameters<typeof PreviewStatus>[0]>) =>
       job={null}
       validating={false}
       transportError={null}
+      errors={[]}
+      onReveal={() => {}}
       onGenerate={() => {}}
       onCancel={() => {}}
       canGenerate={false}

@@ -65,6 +65,21 @@ describe('boot and form rendering', () => {
   })
 })
 
+describe('a value of zero', () => {
+  it('is shown as 0, not as an empty box', async () => {
+    /**
+     * `value ?? value === 0 ? String(value) : ''` reads as the zero check it
+     * was meant to be but is not one: ?? only falls through on null, so 0
+     * reached the conditional as 0, which is falsy. Compression and clearance
+     * are both 0 in the reference, so two fields shipped looking unset - and a
+     * user who typed into one to "fill it in" got a value the API refuses.
+     */
+    await boot()
+    expect(screen.getByLabelText('Compression')).toHaveValue(0)
+    expect(screen.getByLabelText('Clearance')).toHaveValue(0)
+  })
+})
+
 describe('validation', () => {
   it('validates on edit without building geometry', async () => {
     const user = userEvent.setup()
@@ -106,6 +121,83 @@ describe('validation', () => {
     await settleValidation()
     await waitFor(() => expect(screen.getByTestId('diagnostics-panel')).toHaveTextContent('W-GAP-021'))
     expect(screen.getByRole('button', { name: /update preview/i })).toBeEnabled()
+  })
+})
+
+describe('a parameter the backend will not accept', () => {
+  /**
+   * The report this suite came from: on a phone, "422 everywhere, nothing
+   * works, errors at the bottom so I cannot see them and they are just 422s
+   * with no action to take".
+   *
+   * Three separate faults met there. A value outside its bounds failed
+   * `POST /api/validate` as well as the build, so the app had no diagnostics to
+   * show at all. The one message it did have was the status code. And the two
+   * places that render diagnostics - inline on the field, and the panel - are
+   * both in the stacked column below the viewer, several screens down.
+   */
+  const outOfRange = [{
+    code: 'E-RANGE', severity: 'error', field: 'tray.profile.length',
+    message: 'must be greater than 0 (this is 0)',
+  }]
+
+  it('shows the reason and the field when the request itself is refused', async () => {
+    backend.rejectWith = () => outOfRange
+    await boot()
+    await settleValidation()
+
+    // Not "request failed (422)", and not a stale validation from before.
+    const bar = await screen.findByTestId('blocking-error')
+    expect(bar).toHaveTextContent('must be greater than 0')
+    expect(bar).toHaveTextContent('length')
+    expect(screen.getByRole('button', { name: /update preview/i })).toBeDisabled()
+    expect(screen.getByTestId('export-button')).toBeDisabled()
+  })
+
+  it('puts it in the status bar, which is the only part on screen on a phone', async () => {
+    backend.rejectWith = () => outOfRange
+    await boot()
+    await settleValidation()
+    // The status bar floats over the viewer; the form and the diagnostics panel
+    // are below it in the stacked layout.
+    expect(within(screen.getByTestId('preview-status')).getByTestId('blocking-error')).toBeInTheDocument()
+    expect(screen.getByTestId('preview-status')).toHaveTextContent(/cannot build these parameters/i)
+  })
+
+  it('takes you to the field it is about', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    backend.rejectWith = () => outOfRange
+    await boot()
+    await settleValidation()
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: /show me/i }))
+    expect(scrollIntoView).toHaveBeenCalled()
+    expect(document.activeElement).toBe(screen.getByLabelText('Length'))
+  })
+
+  it('recovers as soon as the parameters are acceptable again', async () => {
+    let refuse = true
+    backend.rejectWith = () => (refuse ? outOfRange : null)
+    await boot()
+    await settleValidation()
+    expect(screen.getByTestId('blocking-error')).toBeInTheDocument()
+
+    refuse = false
+    await userEvent.setup().type(screen.getByLabelText('Length'), '5')
+    await settleValidation()
+    await waitFor(() => expect(screen.queryByTestId('blocking-error')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /update preview/i })).toBeEnabled()
+  })
+
+  it('counts the rest rather than hiding them', async () => {
+    backend.rejectWith = () => [...outOfRange, {
+      code: 'E-RANGE', severity: 'error', field: 'mold.flange_width',
+      message: 'must be at most 200 (this is 9999)',
+    }]
+    await boot()
+    await settleValidation()
+    expect(await screen.findByTestId('blocking-more')).toHaveTextContent('+1 more')
   })
 })
 

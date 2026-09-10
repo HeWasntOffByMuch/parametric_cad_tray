@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Diagnostic, Json, UiHints } from '../api/types'
 import { BooleanWidget, EnumWidget, NumberWidget, TextWidget, type WidgetProps } from './widgets'
 import { getValue, groupFields, rootFields, setValue, variantDefaults, type Field, type Group } from './schema'
@@ -44,6 +44,15 @@ export function SchemaForm(props: Props) {
 
 function GroupSection({ group, ...props }: Props & { group: Group }) {
   const [open, setOpen] = useState(!group.collapsed)
+  // An error inside a collapsed group is an error nobody can see or reach, and
+  // it is still blocking the build. Open the group that owns it.
+  const holdsError = props.diagnostics.some(
+    (d) => d.severity === 'error' && group.fields.some(
+      (f) => d.field === f.path || d.field.startsWith(`${f.path}.`) || f.path.startsWith(`${d.field}.`)),
+  )
+  useEffect(() => {
+    if (holdsError) setOpen(true)
+  }, [holdsError])
   return (
     <section className="group" data-group={group.id}>
       <h2>
@@ -85,7 +94,9 @@ function FieldRenderer({ field, exclude, context, ...props }: Props & { field: F
 
   const Widget = WIDGETS[field.kind] ?? TextWidget
   return (
-    <div className={gated ? 'gated' : undefined}>
+    // `data-field` on every field, not only on the object and variant wrappers:
+    // it is how a diagnostic gets scrolled to and focused from the status bar.
+    <div className={gated ? 'gated' : undefined} data-field={field.path}>
       {gated && (
         <p className="hint warn" data-testid={`experimental-${field.path}`}>
           Experimental — enable experimental parameters to edit. {hint?.note}

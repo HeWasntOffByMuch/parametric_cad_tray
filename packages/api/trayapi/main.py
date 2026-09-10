@@ -20,8 +20,9 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from traymold.api import apply_options, environment, json_schema, defaults, validate as core_validate
 from traymold.presets import PRESETS
@@ -46,6 +47,7 @@ from .models import (
     VersionResponse,
 )
 from .policy import policy_diagnostics
+from .request_errors import diagnostics_for, envelope, variant_tags
 from .ui_hints import UI_HINTS
 from .version import API_VERSION
 from .worker import get_pool, shutdown_pool
@@ -99,6 +101,20 @@ def create_app(
 
     app.state.jobs.on_finish = _finished
     app.state.started_at = time.time()
+
+    #: Computed once: the tags a discriminated union adds to a pydantic error
+    #: path, which the form's own field paths leave out.
+    tags = variant_tags(json_schema())
+
+    @app.exception_handler(RequestValidationError)
+    async def body_rejected(request: Request, exc: RequestValidationError):
+        """Answer an unparseable body with diagnostics, not with pydantic's own
+        error list.  See `request_errors`: without this, one out-of-range number
+        takes down `POST /api/validate` too, and the browser is left with a 422
+        and nothing to show the user."""
+        return JSONResponse(
+            status_code=422, content={"detail": envelope(diagnostics_for(exc.errors(), tags))}
+        )
 
     app.add_middleware(
         CORSMiddleware,
