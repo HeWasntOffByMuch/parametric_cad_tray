@@ -2,6 +2,10 @@ import { useState } from 'react'
 import type { Diagnostic, Json, UiHints } from '../api/types'
 import { BooleanWidget, EnumWidget, NumberWidget, TextWidget, type WidgetProps } from './widgets'
 import { getValue, groupFields, rootFields, setValue, variantDefaults, type Field, type Group } from './schema'
+import { Listbox } from './Listbox'
+import { ProfileIcon } from './ProfileIcon'
+import { PROFILE_SHAPES } from './profileShapes'
+import { variantName } from './variantNames'
 
 interface Props {
   jsonSchema: Json
@@ -113,20 +117,25 @@ function VariantField({ field, exclude, context, ...props }: Props & { field: Fi
     <fieldset className="object variant" data-field={field.path}>
       <legend>{field.title}</legend>
       <div className="field">
-        <select
-          aria-label={`${context ? `${context} ` : ''}${field.title} type`}
+        <Listbox
+          label={`${context ? `${context} ` : ''}${field.title} type`}
           value={key}
-          onChange={(e) => {
-            props.onChange(setValue(props.value, field.path, variantDefaults(field, e.target.value, current)))
+          options={(field.variants ?? []).map((v) => {
+            const named = variantName(v.key, v.title)
+            return {
+              value: v.key,
+              label: named.name,
+              selectedLabel: named.full,
+              detail: named.detail,
+              group: named.group,
+              icon: PROFILE_SHAPES[v.key] ? <ProfileIcon kind={v.key} /> : undefined,
+            }
+          })}
+          onChange={(next) => {
+            props.onChange(setValue(props.value, field.path, variantDefaults(field, next, current)))
             props.onCommit()
           }}
-        >
-          {field.variants?.map((v) => (
-            <option key={v.key} value={v.key}>
-              {v.title}
-            </option>
-          ))}
-        </select>
+        />
       </div>
       {variant?.fields.map((child) => (
         <FieldRenderer key={child.path} field={child} exclude={exclude} context={field.title} {...props} />

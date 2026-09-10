@@ -612,3 +612,104 @@ button.lg { height: 36px; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   .progress-fill { transition: none; }
 }
+
+/* -- listbox: a select that can show a picture ---------------------------- */
+/* The trigger matches the native controls beside it exactly - same height,
+   border, radius and focus ring - because it sits in the same column as real
+   <select>s and any difference reads as a bug. */
+.listbox { position: relative; }
+
+.listbox-button {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--s2);
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.listbox-button:hover { border-color: var(--surface-3); }
+.listbox-button[aria-expanded='true'] { border-color: var(--accent); }
+.listbox-value {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.listbox-caret { width: 10px; height: 6px; flex: none; color: var(--muted); }
+
+.listbox-icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--text-2);
+}
+/* Big enough that the silhouette reads, and filled, because an outlined
+   rounded rectangle at the left of a list row is an empty checkbox to anyone
+   scanning it. The fill turns it into a plan view of a tray. */
+.profile-icon { width: 30px; height: 20px; display: block; }
+.profile-icon path { fill: currentColor; fill-opacity: 0.16; }
+.listbox-option[data-active='true'] .listbox-icon,
+.listbox-button .listbox-icon { color: var(--accent); }
+
+/* Fixed, not absolute: the parameter column scrolls, and an absolute popup is
+   clipped by it as soon as the list is taller than the room below the button. */
+.listbox-list {
+  position: fixed;
+  z-index: 40;
+  margin: 0;
+  padding: var(--s1) 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-3, var(--surface-2));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.listbox-item { display: block; }
+
+.listbox-group {
+  display: block;
+  padding: var(--s2) var(--s3) var(--s1);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.listbox-item:first-child .listbox-group { padding-top: var(--s1); }
+
+.listbox-option {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  cursor: pointer;
+  /* No hover rule: the highlight follows the pointer through data-active, so
+     keyboard and mouse cannot disagree about which row is current. */
+}
+.listbox-option[data-active='true'] { background: var(--surface-2); }
+.listbox-option[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
+.listbox-text { flex: 1 1 auto; min-width: 0; }
+.listbox-label { display: block; font-size: 12.5px; color: var(--text); }
+.listbox-detail {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.listbox-tick { width: 12px; height: 12px; flex: none; color: var(--accent); }
+
+/* A finger is not a mouse pointer: give every row a real target and stop the
+   browser waiting to see whether a tap was a double-tap. */
+@media (pointer: coarse) {
+  .listbox-button { height: 40px; }
+  .listbox-option { min-height: 44px; padding: var(--s2) var(--s3); }
+  .listbox-button, .listbox-option { touch-action: manipulation; }
+}
