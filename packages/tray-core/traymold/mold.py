@@ -442,6 +442,10 @@ def apply_features(male, female, params):
     which is the face that meets the male once you turn it over to use it.
     Copying the stored orientation put them on the outside, where a pry notch
     stopped 17 mm short of the seam it exists to open.
+
+    Turning it over is `exporters.print_oriented`'s job, on the way out to a
+    STEP or an STL, so the exported files agree with the reference files while
+    the model stays in one frame.
     """
     f = params.features
     t = params.mold.cavity_plate_thickness

@@ -375,6 +375,9 @@ describe('export', () => {
     expect(within(links).getByText('Complete bundle').closest('a')).toHaveAttribute('download', 'tray-mold.zip')
     // Sizes are human-readable rather than raw kilobytes.
     expect(links).toHaveTextContent('409 kB')
+    // The viewer shows the halves closed, so the female is the other way up
+    // there than in the file. Say so, once there is something to download.
+    expect(screen.getByTestId('export-orientation')).toHaveTextContent(/flat-side-down/i)
     expect(status()).toBe('clean')
   })
 
@@ -398,6 +401,7 @@ describe('export', () => {
     await user.click(screen.getByTestId('export-button'))
     await waitFor(() => expect(screen.getByTestId('export-error')).toHaveTextContent(/time budget/i))
     expect(screen.queryByTestId('export-artifacts')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('export-orientation')).not.toBeInTheDocument()
   })
 })
 

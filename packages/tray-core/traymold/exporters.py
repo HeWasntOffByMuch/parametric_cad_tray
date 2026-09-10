@@ -3,6 +3,11 @@
 Kept apart from `mold.build` so one build can serve several formats and so the
 worker that owns the OCC solids is the only thing that ever touches them.
 
+Two frames leave here.  The GLB keeps the frame the solids are built in -
+assembly orientation - because the viewer has to show the two halves closed.
+STEP and STL are print-oriented: `print_oriented` turns the female over so the
+face that goes on the bed is the flat one.
+
 Traceability: every format carries the params hash and the versions that produced
 it, in whatever channel the format allows - STEP in its header, STL in its 80-byte
 binary header, GLB in `asset.extras`.  A printed part can be traced to its inputs.
@@ -63,6 +68,10 @@ def export_glb(result, path: Path, quality: Quality) -> Path:
     with its own mesh, so a viewer can show, hide and transform them
     independently.  Canonical frame: origin at the plan centre on the parting
     plane, +Z the plug direction - the same frame the solids are built in.
+
+    Deliberately *not* print-oriented, unlike the STEP and STL: the viewer's job
+    is to show the mold closed, and a female turned over for the bed would not
+    meet the male.  See `print_oriented`.
     """
     from cadquery.occ_impl.exporters.assembly import exportGLTF
 
@@ -129,6 +138,39 @@ def _stamp_step(path: Path, trace: dict) -> None:
         path.write_text(text)
 
 
+#: The solids are built in *assembly* orientation - z=0 is the parting plane and
+#: +Z the plug direction - and that frame is what the viewer needs, because the
+#: two halves only look like a mold when they are shown closed.  A slicer needs
+#: the opposite thing: the face that goes on the bed.
+#:
+#: For the female those are not the same face.  Everything it carries that is not
+#: symmetric in z is on the parting face at z=0 - the entry blend, the pry
+#: notches, the clamp chamfers, the blind pin holes - which is precisely the face
+#: you cannot print against.  Its outer face at z=`cavity_plate_thickness` is
+#: flat: no blend (the top entry blend defaults to none), no notches, no
+#: chamfers, no blind holes, only the openings of the clamp holes that pass all
+#: the way through.  So the exported female is turned over.
+#:
+#: The male needs nothing: its base plate is already the lowest face and already
+#: flat, with the plug printing upward.
+PART_ROTATIONS = {"female": 180.0}
+
+
+def print_oriented(shape, part: str):
+    """Lay a part the way it is printed, not the way it is assembled.
+
+    A **rotation about X**, never a mirror.  A mold half is chiral; mirroring one
+    produces a part that cannot close on the other, and the two are easy to
+    confuse because turning a real part over does flip its apparent handedness.
+    Afterwards the solid is dropped so it rests on z=0.
+    """
+    angle = PART_ROTATIONS.get(part)
+    if not angle:
+        return shape
+    turned = shape.rotate((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), angle)
+    return turned.translate((0.0, 0.0, -turned.BoundingBox().zmin))
+
+
 def write_artifacts(
     result, outdir: Path, formats: Sequence[str], *, quality: Quality | None = None
 ) -> list:
@@ -138,9 +180,16 @@ def write_artifacts(
     outdir.mkdir(parents=True, exist_ok=True)
     trace = _trace(result)
     out: list[Artifact] = []
+    # Once, not once per format: turning a solid over copies its whole TShape.
+    printed = {
+        part: print_oriented(shape, part)
+        for part in ("male", "female")
+        if (shape := getattr(result, part)) is not None
+    }
 
     for fmt in formats:
         if fmt == "glb":
+            # `result`, not `printed`: the viewer needs assembly orientation.
             present = [p for p in ("male", "female") if getattr(result, p) is not None]
             if not present:
                 continue
@@ -155,10 +204,7 @@ def write_artifacts(
             export_glb(result, path, quality)
             out.append(_artifact(name, "glb", part, path))
             continue
-        for part in ("male", "female"):
-            shape = getattr(result, part)
-            if shape is None:
-                continue
+        for part, shape in printed.items():
             path = outdir / f"{part}.{fmt}"
             if fmt == "step":
                 export_step(shape, path)

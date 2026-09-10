@@ -136,6 +136,13 @@ export function ExportPanel({ params, disabled, allowExperimental }: { params: J
           )}
         </ul>
       )}
+      {/* Worth saying, because the viewer above shows the opposite: it has to
+          show the halves closed, so the female is the other way up there. */}
+      {artifacts.length > 0 && (
+        <p className="hint" data-testid="export-orientation">
+          Print-oriented: each half is already flat-side-down on the bed.
+        </p>
+      )}
       {job?.cached && job.state === 'complete' && <p className="hint">served from cache</p>}
     </section>
   )

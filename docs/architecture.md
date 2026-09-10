@@ -196,8 +196,10 @@ support. All three of its asymmetric features — entry blend, pry notches, clam
 chamfers — are on the printed-up face, which is the face that meets the male the
 moment you turn the part over to use it.
 
-Measured on `4x7-female-wetmold.stl` (its own frame, z 25 → 50, with 25 sitting
-against the male's plate):
+Measured on `4x7-female-wetmold.stl` (its own frame, z 25 → 50, with **50** the
+face that meets the male and 25 the flat one that sat on the bed — the file is a
+print-orientation export, so the two ends are the other way round from the model;
+`tests/reference.py` bridges them with `z_ref = 25 − z_built + Z_SHIFT`):
 
 ```
 cavity half-width   90.500 mm from z 25 to 47, then 91.035 at 49, 92.127 at 49.8
@@ -210,6 +212,9 @@ plug direction — so every one of those belongs at z=0 here, and the tests
 compare against the reference with the mirror stated explicitly
 (`compare_forming_profiles(..., flipped=True)`) rather than by moving the
 sampled heights out of the way.
+
+The exported STEP and STL are then turned back over, so the files traymold
+writes agree with the reference files after all — see §7.10.
 
 The root blend being a genuine circular fillet while every other blend is the G2
 quintic is deliberate, and visible in the face types. A model that forces one
@@ -505,6 +510,52 @@ for both is the lever §8.4 names — building each half as a single loft instea
 of a sequence of booleans. Lofting the root blend into the plug was tried and
 does build an ellipse; it also moved the reference volume by 165 cm³, so it is a
 change to make deliberately and verify against the reference STEP, not a patch.
+
+### 7.10 Assembly orientation is not print orientation
+
+The solids are built in assembly orientation and two consumers want different
+things from that frame, so the two get different frames:
+
+| artifact | frame | why |
+|---|---|---|
+| GLB | assembly, untouched | the viewer's job is to show the halves **closed**; a female turned over would not meet the male |
+| STEP, STL | print | a slicer's job is to put a face on the bed |
+
+Only the female moves. Everything it carries that is not symmetric in z is on
+the parting face at z=0 — entry blend, pry notches, clamp chamfers, blind pin
+holes — which is exactly the face you cannot print against. Its outer face at
+z=`cavity_plate_thickness` is flat: nothing but the openings of the clamp holes
+that pass all the way through. Measured on the exported female, sampling a
+121 × 85 grid 0.05 mm inside each face (`REF_4X7`, alignment pins added):
+
+```
+bed face  z=0   4801 of 10285 samples void:  4785 cavity mouth,  16 clamp bore,  0 other
+top face  z=t   5263 of 10285 samples void:  5091 cavity mouth,  16 clamp bore, 156 pry notch
+```
+
+The cavity mouth is 306 samples wider at the top because the entry blend is
+there — which is the point: the bed gets the sharp mouth and the full plate
+section, not a knife edge of blend.
+
+The male needs nothing. Its base plate is already the lowest face and already
+flat, with the plug printing upward.
+
+**It is a rotation about X, never a mirror.** A mold half is chiral, and the two
+are easy to confuse because turning a real part over does flip its apparent
+handedness — a mirrored female looks perfectly right in a viewer and will not
+close on the male. `tests/test_print_orientation.py` reads this off the geometry
+rather than off the transform: a rotation maps (x, y, z) → (x, −y, −z), so every
+one-ended feature changes diagonal, and three of them are checked at once
+because a mirror would move none of them.
+
+| feature | specified on | after the flip |
+|---|---|---|
+| pry notches | `ne_sw` | `nw_se` |
+| blind pin holes | `nw_se` | `ne_sw` |
+| clamp chamfer | `nw_se` | `ne_sw` |
+
+This is also why the reference files are stored the way §4.3 describes: they are
+slicer exports, so traymold's own exports now agree with them.
 
 ---
 

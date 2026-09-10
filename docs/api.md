@@ -188,7 +188,9 @@ is proved against geometry in `test_split_keys.py` — see §6a.
 Note the quality *defaults* are not in either key: they resolve at build time
 rather than living in the parameter document. Changing one therefore requires a
 `MODEL_VERSION` bump to invalidate what is already on disk, which is what
-0.2.0 → 0.3.0 was for.
+0.2.0 → 0.3.0 was for. Anything else that changes the bytes for unchanged
+parameters needs the same: 0.3.0 → 0.4.0 covers the female's features moving
+onto the parting face and the print-oriented STEP/STL (§7, architecture §7.10).
 
 ### Concurrent deduplication
 `JobManager` keeps `cache_key → job_id` for in-flight jobs under a lock. A second
@@ -287,6 +289,15 @@ Traceability goes into whatever channel each format allows:
 
 Export geometry is never degraded for latency: export quality is fixed at
 `max_section_sagitta = 0.002 mm` regardless of API load.
+
+**STEP and STL come out print-oriented; the GLB does not.** The solids are built
+in assembly orientation — z=0 the parting face, +Z the plug direction — which is
+what the viewer needs, because the two halves only read as a mold when they are
+shown closed. A slicer needs the opposite: the female's parting face carries the
+entry blend, the pry notches, the clamp chamfers and the blind pin holes, so the
+exported female is turned over (a rotation about X, never a mirror) and dropped
+onto z=0, leaving its flat outer face on the bed. The male is already
+plate-down and is left where it was built. See architecture §7.10.
 
 ---
 

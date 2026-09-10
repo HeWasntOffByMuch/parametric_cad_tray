@@ -36,8 +36,9 @@ REF_4X7 = Params(
         male_root_blend=CircularFillet(radius=1.2),
         male_floor_blend=G2QuinticBlend(setback=5.0),
         # On the parting face, not the outer one. The reference STEP has it on
-        # the other end because the file is a print-orientation export; see
-        # mold.apply_features.
+        # the other end because the file is a print-orientation export - and so
+        # is ours, once `exporters.print_oriented` has turned the female over.
+        # See mold.apply_features.
         female_entry_blend_bottom=G2QuinticBlend(setback=3.0),
         female_entry_blend_top=NoTreatment(),
     ),
