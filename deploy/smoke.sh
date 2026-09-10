@@ -180,32 +180,52 @@ else
   state="$(printf %s "$final" | jget state)"
   [ "$state" = "complete" ] && ok "job state complete" || bad "job state $state" "$(printf %s "$final" | jget error)"
 
-  glb_url="$(printf %s "$final" | jget artifacts.preview.url)"
-  [ -n "$glb_url" ] || glb_url="$(printf %s "$final" | python3 -c 'import json,sys
-a=json.load(sys.stdin).get("artifacts",{})
-g=[v["url"] for v in a.values() if v.get("format")=="glb"]
-print(g[0] if g else "")' 2>/dev/null)"
+  # A preview is two GLBs, one per half, because the halves are built as
+  # separate cache entries. An older API returns a single combined preview.glb;
+  # both shapes are accepted, and each file must name the part it holds.
+  glb_list="$(printf %s "$final" | python3 -c '
+import json, sys
+for name, v in sorted(json.load(sys.stdin).get("artifacts", {}).items()):
+    if v.get("format") == "glb":
+        print((v.get("part") or "assembly"), v["url"])
+' 2>/dev/null)"
 
-  if [ -n "$glb_url" ]; then
-    glb="$(mktemp)"
-    if curl -fsS --max-time 60 "$BASE$glb_url" -o "$glb"; then
-      size=$(wc -c < "$glb")
-      python3 - "$glb" <<'PY' && ok "GLB $((size/1024)) kB, magic ok, male and female are separate nodes" || bad "the GLB is not the expected shape"
-import json, struct, sys
+  if [ -z "$glb_list" ]; then
+    bad "the completed job carried no GLB artifact"
+  else
+    total=0; parts_seen=""
+    while read -r part url; do
+      [ -n "$url" ] || continue
+      glb="$(mktemp)"
+      if curl -fsS --max-time 60 "$BASE$url" -o "$glb"; then
+        total=$(( total + $(wc -c < "$glb") ))
+        if PART="$part" python3 -c '
+import json, os, struct, sys
 raw = open(sys.argv[1], "rb").read()
 assert raw[:4] == b"glTF", "not a GLB"
 n = struct.unpack("<I", raw[12:16])[0]
 doc = json.loads(raw[20:20 + n])
 names = {x.get("name", "") for x in doc.get("nodes", [])}
-assert any("male" in s.lower() for s in names), names
-assert any("female" in s.lower() for s in names), names
-PY
-    else
-      bad "could not download the GLB" "$BASE$glb_url"
-    fi
-    rm -f "$glb"
-  else
-    bad "the completed job carried no GLB artifact"
+want = ("male", "female") if os.environ["PART"] == "assembly" else (os.environ["PART"],)
+for part in want:
+    assert any(part in s.lower() for s in names), (part, names)
+' "$glb"; then
+          parts_seen="$parts_seen $part"
+        else
+          bad "the $part GLB is not the expected shape"
+        fi
+      else
+        bad "could not download the $part GLB" "$BASE$url"
+      fi
+      rm -f "$glb"
+    done <<GLBS
+$glb_list
+GLBS
+    case "$parts_seen" in
+      *male*female*|*female*male*|*assembly*)
+        ok "GLB $((total/1024)) kB total, every half present and named:$parts_seen" ;;
+      *) bad "the preview is missing a half" "got:$parts_seen" ;;
+    esac
   fi
 fi
 

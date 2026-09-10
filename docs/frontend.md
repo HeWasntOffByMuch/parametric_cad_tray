@@ -231,6 +231,32 @@ sent to the server, and requires no server-side routing.
 
 ---
 
+## 6a. Progress, and why the preview is two files
+
+The status strip carries a determinate bar while a build runs. Every number in
+it is measured: the worker calls back as each build stage *finishes*, and the
+fraction is that stage's share of the build, from costs profiled on the
+reference design and normalised over the stages this parameter set will actually
+run. The bar draws nothing until the first real stage lands — a bar sitting at
+zero is a promise, and one that animates on its own is a lie — and it is a 2px
+line along the strip's bottom edge, `scaleX`-animated so it cannot reflow the
+row it lives in. It carries `progressbar` semantics and respects
+`prefers-reduced-motion`.
+
+The viewer loads **one GLB per half**. The API builds the plug and the cavity as
+separate cache entries, so changing a cavity setting leaves the plug's URL
+untouched and the viewer keeps the mesh it already has; the two halves also
+build in parallel when both do change. `previewUrlsOf` reads the per-part
+artifacts and falls back to a single combined `preview.glb` if the backend is
+older than the frontend, which it can be — they deploy independently.
+
+The explode offset goes on the *named node* inside each file, never on the
+file's root: the root carries the exporter's Z-up to Y-up quaternion, so moving
+it would translate the half along world Z while the press axis is the part's
+local Z.
+
+---
+
 ## 7a. The usage counter
 
 `panels/UsageCounter.tsx` shows one number in the header — *"1,204 custom molds

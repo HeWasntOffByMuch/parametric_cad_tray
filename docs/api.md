@@ -60,7 +60,7 @@ document before anything is hashed, so `build(params, quality="preview")` and
 | POST | `/api/validate` | 200 | `{valid, diagnostics[], derived{}, params_hash, …}` |
 | POST | `/api/preview` | **202** job, **200** on a cache hit | preview quality → GLB |
 | POST | `/api/export` | **202** job, **200** on a cache hit | export quality → STEP + STL |
-| GET | `/api/jobs/{id}` | 200 / 404 | job state |
+| GET | `/api/jobs/{id}` | 200 / 404 | job state, with `progress` and `stage` while running |
 | POST | `/api/jobs/{id}/cancel` | 200 / 404 | |
 | GET | `/api/artifacts/{key}/{name}` | 200 / 404 | one file; optional `?s=&v=` anonymous ids |
 | GET | `/api/artifacts/{key}/bundle.zip` | 200 / 404 | every artifact + `result.json` |
@@ -167,6 +167,29 @@ Layout: `CACHE_DIR/<key>/{result.json, preview.glb, male.step, …, bundle.zip}`
 A hit requires `result.json` and every artifact it lists to exist. **Failed
 builds are never cached.**
 
+### Per-half keys, for previews
+
+A preview is two builds (§6a), so it uses two entries. `half_key` is the same
+address over a *projection* of the parameters:
+
+```
+half_key = sha256(canonical_json({
+    params:  canonical parameters, minus this half's IGNORED_BY paths
+             and minus `mold.parts`,
+    part:    "male" | "female",
+    env:     …, formats: …,
+}))
+```
+
+`mold.parts` is dropped and replaced by `part`, so asking for both halves and
+asking for one hit the same entry. `IGNORED_BY` is what makes reuse possible and
+is proved against geometry in `test_split_keys.py` — see §6a.
+
+Note the quality *defaults* are not in either key: they resolve at build time
+rather than living in the parameter document. Changing one therefore requires a
+`MODEL_VERSION` bump to invalidate what is already on disk, which is what
+0.2.0 → 0.3.0 was for.
+
 ### Concurrent deduplication
 `JobManager` keeps `cache_key → job_id` for in-flight jobs under a lock. A second
 request for a key already building attaches to that job rather than starting a
@@ -199,18 +222,48 @@ owns a whole process.
 
 ## 6. Preview artifact
 
-One GLB per build, holding **both halves as separate named nodes**:
+**Two GLBs, one per half** — `male.glb` and `female.glb` — each holding that
+half as a node named for it:
 
 ```
-node "tray-mold"
- ├── node "male"    → mesh "male"
- └── node "female"  → mesh "female"
+male.glb    node "male"    → mesh "male"
+female.glb  node "female"  → mesh "female"
 ```
 
-so the future viewer can show, hide and transform them independently. The frame
-is the core's canonical one — origin at the plan centre on the parting plane, +Z
-the plug direction — and both halves are emitted in assembly position, so the
-mold reads as closed with no client-side transform.
+Two files rather than one because a preview is built as two jobs; see §6a. Both
+are emitted in assembly position in the core's canonical frame — origin at the
+plan centre on the parting plane, +Z the plug direction — so loading both and
+adding nothing shows the mold closed, and the viewer shows, hides and explodes
+each by moving its named node.
+
+A build that asks for only one half returns only that half's file. A build that
+puts both halves in one file still writes `preview.glb` with `part: assembly`
+and both nodes inside it, which is what the CLI and any older client get.
+
+---
+
+## 6a. Why a preview is two builds
+
+The plug and the cavity share nothing downstream of the base profile. The male
+*is* that profile; the female is the same profile offset by the forming gap; and
+`apply_features` guards every branch on which half it was handed. So the halves
+can be built separately, and are:
+
+* **A change to one half does not rebuild the other.** Each half is content
+  addressed on the parameters that can actually reach it — `cache.half_key`,
+  with `IGNORED_BY` naming the exclusions. Changing `leather.thickness` moves
+  the forming gap, so the cavity is rebuilt and the plug is served from disk.
+* **A change to both is built in parallel.** Two halves go to two workers, so
+  the wall clock is the slower half rather than the sum.
+
+`IGNORED_BY` is a claim about geometry, so `test_split_keys.py` proves it: every
+excluded field is changed and the half it is excluded from must come out
+volumetrically identical. Both halves are built from the *whole* parameter
+document — only the key is projected — so validation and the derived values are
+exactly what a combined build produces.
+
+Exports are never split: their STEP and STL are per-part already, a bundle
+spanning two cache directories has no meaning, and an export happens once.
 
 It comes from the same `build()` as an export, at preview quality. There is no
 second, browser-side approximation of the tray. Preview's ≤50 µm contract is
@@ -251,6 +304,24 @@ taken from the worker's own report so the remainder is genuinely the API's.
 | export, cache hit | **18.4 ms** | 2.6 | — | — | — | 15.8 | 2.6 ms |
 
 App startup including worker warm-up: 3.45 s.
+
+### The edit loop, after the split
+
+The table above times a build. What a *user* waits for when they change one
+setting is smaller, because a preview is two independently cached halves built
+in parallel. Measured against a running API on the reference design:
+
+| the edit | wall | what happened |
+|---|---|---|
+| nothing changed | **0.00 s** | both halves served from cache |
+| a cavity setting (`cavity_plate_thickness`) | **1.74 s** | plug reused, cavity rebuilt |
+| leather thickness | **1.80 s** | moves the forming gap, so the cavity only |
+| a plug setting (`base_plate_thickness`) | **3.20 s** | cavity reused, plug rebuilt |
+| tray length | **3.70 s** | both rebuilt, in parallel; ~5.5 s in series |
+| a cold build | 4.21 s | both halves, nothing cached |
+
+The plug is the expensive half — its floor blend alone is 41% of a preview — so
+a cavity-side edit is roughly a third of a full rebuild.
 
 The API adds ~7 ms to a build — 0.2 % of a preview, 0.1 % of an export. The core
 baseline it wraps is 2.5 s / 5.4 s; the extra ~0.9 s and ~0.6 s here are the
@@ -321,9 +392,21 @@ full job payload, plus a keep-alive comment every 15 s. The job manager pushes o
 transition rather than the endpoint polling, so a browser sees `complete` the
 moment the worker returns.
 
-`progress` is always `null` — the core exposes no meaningful stages and a
-fabricated percentage would be a lie. `status` carries a short human-readable
-message instead.
+`progress` is a real fraction, 0 to 1, and `stage` names the build stage behind
+it. The core calls back as each stage *finishes*; `traymold.progress.plan()`
+turns the stage into a fraction using costs measured on the reference design,
+normalised over the stages that particular parameter set will actually run. So
+the bar advances in real checkpoints rather than being eased along a timer, and
+a build with one half already cached does not stall waiting for work that was
+never going to happen.
+
+`progress` is `null` until the first stage lands and on a cache hit, where
+nothing was built to be partway through. `status` carries the stage's label
+("blending the tray floor").
+
+For a split preview the two halves report independently and the job's fraction
+is their weighted mean, weighted by how long each half is expected to take — the
+plug is about 2.7x the cavity, so a plain average would run ahead.
 
 `GET /api/jobs/{id}` remains the fallback for a dropped stream, a buffering proxy
 or a restarted API.

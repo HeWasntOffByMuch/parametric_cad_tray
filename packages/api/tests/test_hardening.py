@@ -192,12 +192,22 @@ def test_a_pinned_entry_survives_eviction(cache):
 
 
 @pytest.mark.slow
-def test_an_active_job_pins_its_cache_entry(live_client, ref_params):
+def test_an_active_job_pins_its_cache_entries(live_client, ref_params):
+    """A sweep must not delete a directory a running job is about to write into.
+
+    A preview builds two halves into two directories, so both are pinned, and
+    the job's own `cache_key` is an identity rather than a place on disk.
+    """
     submitted = live_client.post("/api/preview", json={"params": ref_params}).json()
     cache = live_client.jobs.cache
-    assert submitted["cache_key"] in cache._pinned
+    job = live_client.jobs.get(submitted["id"])
+
+    pinned = set(job.part_keys.values()) or {job.cache_key}
+    assert len(pinned) == 2, "a preview should be pinning both halves"
+    assert pinned <= set(cache._pinned), (pinned, cache._pinned)
+
     poll(live_client, submitted["id"])
-    assert submitted["cache_key"] not in cache._pinned
+    assert not (pinned & set(cache._pinned)), "the pins outlived the job"
 
 
 def test_a_hit_refreshes_recency(cache):

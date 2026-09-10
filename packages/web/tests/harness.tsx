@@ -55,7 +55,24 @@ export class FakeBackend {
     }
   }
 
-  glbArtifact(): Record<string, Artifact> {
+  /** What the API returns for a preview: one GLB per half, each in its own
+   *  cache directory, because the halves are built as separate jobs. */
+  glbArtifact(key = 'key'): Record<string, Artifact> {
+    return {
+      'male.glb': {
+        name: 'male.glb', format: 'glb' as const, part: 'male' as const,
+        bytes: 51204, sha256: 'x', url: `/api/artifacts/${key}-male/male.glb`,
+      },
+      'female.glb': {
+        name: 'female.glb', format: 'glb' as const, part: 'female' as const,
+        bytes: 39112, sha256: 'y', url: `/api/artifacts/${key}-female/female.glb`,
+      },
+    }
+  }
+
+  /** The single combined file an API from before the split returns. Kept so the
+   *  frontend's fallback for it stays exercised rather than assumed. */
+  legacyGlbArtifact(): Record<string, Artifact> {
     return {
       'preview.glb': {
         name: 'preview.glb', format: 'glb' as const, part: 'assembly' as const,

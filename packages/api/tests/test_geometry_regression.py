@@ -60,23 +60,30 @@ def test_step_carries_traceability_metadata(live_client, ref_params):
     assert "schema=" in text and "model=" in text
 
 
-def test_preview_glb_has_separate_male_and_female_nodes(live_client, ref_params):
+def test_each_preview_glb_carries_its_own_named_part(live_client, ref_params):
+    """A preview is two files now, and each must still name its part.
+
+    The viewer offsets the *named node* to explode the mold - the file's root
+    carries the Z-up to Y-up quaternion, so moving that would translate along
+    the wrong axis. An unnamed node would leave the explode with nothing to move.
+    """
     import json
 
     job = poll(live_client, live_client.post("/api/preview", json={"params": ref_params}).json()["id"])
-    raw = live_client.get(job["artifacts"]["preview.glb"]["url"]).content
-    assert raw[:4] == b"glTF" and struct.unpack("<I", raw[4:8])[0] == 2
-    json_len = struct.unpack("<I", raw[12:16])[0]
-    doc = json.loads(raw[20 : 20 + json_len])
+    assert set(job["artifacts"]) == {"male.glb", "female.glb"}
 
-    names = [node.get("name") for node in doc["nodes"]]
-    assert "male" in names and "female" in names
-    assert {mesh["name"] for mesh in doc["meshes"]} == {"male", "female"}
-    for name in ("male", "female"):
-        node = next(n for n in doc["nodes"] if n.get("name") == name)
-        assert node.get("mesh") is not None, f"{name} has no mesh of its own"
-    assert doc["asset"]["extras"]["params_hash"] == job["params_hash"]
-    assert doc["asset"]["extras"]["quality"] == "preview"
+    for part in ("male", "female"):
+        raw = live_client.get(job["artifacts"][f"{part}.glb"]["url"]).content
+        assert raw[:4] == b"glTF" and struct.unpack("<I", raw[4:8])[0] == 2
+        json_len = struct.unpack("<I", raw[12:16])[0]
+        doc = json.loads(raw[20 : 20 + json_len])
+
+        names = [node.get("name") for node in doc["nodes"]]
+        assert part in names, (part, names)
+        assert {mesh["name"] for mesh in doc["meshes"]} == {part}
+        node = next(n for n in doc["nodes"] if n.get("name") == part)
+        assert node.get("mesh") is not None, f"{part} has no mesh of its own"
+        assert doc["asset"]["extras"]["quality"] == "preview"
 
 
 def test_preview_and_export_describe_the_same_design(live_client, ref_params):

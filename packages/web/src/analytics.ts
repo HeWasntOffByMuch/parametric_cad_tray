@@ -123,19 +123,23 @@ export function track(event: ClientEvent): void {
   const body = JSON.stringify({ event, ...ids(), ...attribution() })
   const url = apiUrl('/api/analytics/event')
   try {
-    // sendBeacon survives the page being closed, which is exactly the case for
-    // a MakerWorld click. It is also fire-and-forget, so it cannot block a
-    // navigation the user asked for.
-    if (navigator?.sendBeacon?.(url, new Blob([body], { type: 'application/json' }))) return
-  } catch {
-    /* fall through to fetch */
-  }
-  try {
+    // `keepalive` is what makes this survive the page being closed, which is
+    // exactly the case for an outbound model-page click. It is fire-and-forget,
+    // so it cannot block a navigation the user asked for.
+    //
+    // Not sendBeacon, which is the obvious choice and does not work here: the
+    // spec gives a beacon credentials mode "include", and the API sets
+    // `allow_credentials=False` - correctly, it has no auth to protect - so the
+    // preflight fails on Access-Control-Allow-Credentials and every event is
+    // dropped. Found by watching the console of a real browser against a real
+    // API; nothing on either side reports it, because both are behaving.
     void fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body,
       keepalive: true,
+      mode: 'cors',
+      credentials: 'omit',
     }).catch(() => {})
   } catch {
     /* telemetry is optional; the app is not */

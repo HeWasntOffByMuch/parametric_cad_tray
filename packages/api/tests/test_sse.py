@@ -35,7 +35,9 @@ def test_sse_streams_states_through_to_complete(live_client, ref_params):
     assert event_names(body)[-1] == "complete"
 
     final = parse_sse(body)[-1]
-    assert final["artifacts"]["preview.glb"]["url"].startswith("/api/artifacts/")
+    assert set(final["artifacts"]) == {"male.glb", "female.glb"}
+    for artifact in final["artifacts"].values():
+        assert artifact["url"].startswith("/api/artifacts/")
     assert final["status"] == "done"
     assert final["progress"] == 1.0
 
@@ -59,22 +61,30 @@ def test_sse_reports_real_monotonic_progress(live_client, ref_params):
     assert all(0.0 <= f <= 1.0 for f in fractions), fractions
     assert fractions[-1] == 1.0
 
-    # Every reported stage is one the plan said would run, in the plan's order.
+    # A preview builds its two halves at the same time, so the stages of one
+    # interleave with the stages of the other and there is no single order to
+    # compare against. What must hold is that every stage reported is one of the
+    # stages one of the halves was going to run, and that both halves are heard
+    # from - a bar driven by only one of two concurrent builds would stall.
     from traymold.api import apply_options
     from traymold.params import Params
     from traymold.progress import plan
 
-    expected = plan(apply_options(Params.model_validate(ref_params), "preview", None))
-    # The terminal frame repeats the last stage - the job is still *at* write
-    # when it completes - so compare the sequence of distinct stages.
-    reported: list[str] = []
-    for event in events:
-        stage = event.get("stage")
-        if stage and (not reported or reported[-1] != stage):
-            reported.append(stage)
+    params = Params.model_validate(ref_params)
+    halves = {}
+    for part in ("male", "female"):
+        effective = apply_options(params, "preview", {"male": part == "male",
+                                                      "female": part == "female"})
+        halves[part] = set(plan(effective))
+
+    reported = {e["stage"] for e in events if e.get("stage")}
     assert reported, "no stage names were reported"
-    assert set(reported) <= set(expected), (reported, list(expected))
-    assert reported == [s for s in expected if s in set(reported)]
+    assert reported <= (halves["male"] | halves["female"]), (reported, halves)
+
+    male_only = halves["male"] - halves["female"]
+    female_only = halves["female"] - halves["male"]
+    assert reported & male_only, f"nothing was heard from the plug: {reported}"
+    assert reported & female_only, f"nothing was heard from the cavity: {reported}"
 
 
 @pytest.mark.slow

@@ -43,10 +43,27 @@ class Quality:
 #: error next to the B-rep work, so the old settings bought nothing.  Bandwidth
 #: is the only real cost, which is why preview stops where returns flatten and
 #: export does not.
+#:
+#: `max_section_sagitta` is the other half of the story, and it moves the B-rep
+#: rather than the mesh: it sets how many cross-sections an edge treatment is
+#: lofted through.  Preview was 0.05 mm, which resolves to 4/8/7 sections on the
+#: reference - the `blend_sections` cap of 16 never binds.  Measured, median of
+#: three, deviation being the worst 3D surface drift from the *export* result
+#: around the forming loop, against a 50 um budget:
+#:
+#:     preview sagitta 0.05   4/8/7 sections   4.86 s   2.5 um
+#:     preview sagitta 0.20   4/5/4 sections   3.63 s   4.6 um
+#:     preview sagitta 0.60   4/4/4 sections   3.66 s        (no faster)
+#:
+#: So preview is 0.20: a quarter off the build for 4.6 um, an eleven-fold margin
+#: inside the budget.  It is not monotonic - 0.60 has fewer sections and is
+#: slower - which is the same fact §8.4 of the architecture notes records, that
+#: preview time is fixed-cost boolean work rather than section count.  Export is
+#: unchanged and is never traded for latency.
 DEFAULTS: dict[str, Quality] = {
     "export": Quality("export", blend_sections=48, max_section_sagitta=0.002,
                       linear_deflection=0.01, angular_deflection=0.05),
-    "preview": Quality("preview", blend_sections=16, max_section_sagitta=0.05,
+    "preview": Quality("preview", blend_sections=16, max_section_sagitta=0.20,
                        linear_deflection=0.10, angular_deflection=0.15),
 }
 

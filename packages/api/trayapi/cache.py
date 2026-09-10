@@ -48,6 +48,79 @@ def cache_key(effective_params, formats: Sequence[str]) -> str:
     return hashlib.sha256(canonical_json(payload).encode()).hexdigest()
 
 
+#: Parameters that provably cannot reach one half of the mold, and so must not
+#: be in that half's cache key - otherwise splitting the build buys nothing,
+#: because every edit changes every key.
+#:
+#: Read off the code that builds each half:
+#:
+#:   * the male IS the base profile (offset 0), so the forming gap and
+#:     everything feeding it - leather, fit - moves only the female;
+#:   * `apply_features` guards every branch on which half it was handed, and
+#:     pry notches and the pin's fit clearance are cut in the female only;
+#:   * the plates and the edge treatments are named for the half they belong to.
+#:
+#: This list is a claim about the geometry, so `test_split_keys.py` proves it:
+#: every field named here is changed and the half's solid must come out
+#: identical. Add nothing to it without a test that holds.
+#:
+#: Note this is the *key* only. Both halves are still built from the full
+#: parameter document, so validation and the derived values are unaffected -
+#: which is why the forming gap can be ignored here without the male half
+#: reporting the wrong gap.
+IGNORED_BY: dict[str, tuple[tuple[str, ...], ...]] = {
+    "male": (
+        ("leather",),
+        ("fit",),
+        ("mold", "cavity_plate_thickness"),
+        ("mold", "female_entry_blend_top"),
+        ("mold", "female_entry_blend_bottom"),
+        ("features", "pry_notches"),
+        ("manufacturing", "pin_fit_clearance"),
+    ),
+    "female": (
+        ("mold", "base_plate_thickness"),
+        ("mold", "male_root_blend"),
+        ("mold", "male_floor_blend"),
+    ),
+}
+
+
+def _without(data: dict, path: tuple[str, ...]) -> None:
+    node = data
+    for step in path[:-1]:
+        node = node.get(step)
+        if not isinstance(node, dict):
+            return
+    node.pop(path[-1], None)
+
+
+def half_key(effective_params, formats: Sequence[str], part: str) -> str:
+    """Cache key for one half of a mold.
+
+    The same content address as `cache_key`, over the parameters that half
+    actually depends on. Two designs that differ only in the other half share
+    this entry, which is the whole point: changing a cavity setting must leave
+    the plug's artifact exactly where it was.
+    """
+    from traymold.api import canonical_json, canonical_params, environment
+
+    data = canonical_params(effective_params)
+    for path in IGNORED_BY.get(part, ()):
+        _without(data, path)
+    # `parts` says which half this is; dropping it and keying on `part` instead
+    # keeps the entry independent of how the request happened to be phrased.
+    if isinstance(data.get("mold"), dict):
+        data["mold"].pop("parts", None)
+    payload = {
+        "params": data,
+        "part": part,
+        "env": environment(),
+        "formats": sorted(set(formats)),
+    }
+    return hashlib.sha256(canonical_json(payload).encode()).hexdigest()
+
+
 @dataclass
 class CacheStats:
     entries: int

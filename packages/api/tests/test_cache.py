@@ -137,6 +137,10 @@ def test_concurrent_identical_requests_deduplicate_to_one_build(cache, ref_param
             assert all("id" in r for r in results), f"a request was refused: {results}"
             assert len({r["id"] for r in results}) == 1, "requests did not deduplicate to one job"
             assert poll(client, results[0]["id"])["state"] == "complete"
-            assert CountingPool.builds == 1, f"{CountingPool.builds} builds ran, expected 1"
+            # One job, and one build *per half* - a preview is two builds by
+            # design. Four requests still cost exactly what one costs: what must
+            # never happen is eight.
+            assert CountingPool.builds == 2, \
+                f"{CountingPool.builds} builds ran, expected 2 (one per half)"
     finally:
         pool.shutdown()

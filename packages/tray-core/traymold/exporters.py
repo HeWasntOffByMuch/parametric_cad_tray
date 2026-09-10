@@ -141,11 +141,19 @@ def write_artifacts(
 
     for fmt in formats:
         if fmt == "glb":
-            if result.male is None and result.female is None:
+            present = [p for p in ("male", "female") if getattr(result, p) is not None]
+            if not present:
                 continue
-            path = outdir / "preview.glb"
+            # A GLB holding one half is named for that half. Two half-builds of
+            # the same design are merged into one job by the API, and two files
+            # both called preview.glb would collide there - and "assembly" would
+            # be a lie about a file with one part in it. Both halves in one file
+            # keeps the old name, so a combined build is unchanged.
+            part = present[0] if len(present) == 1 else "assembly"
+            name = f"{part}.glb" if part != "assembly" else "preview.glb"
+            path = outdir / name
             export_glb(result, path, quality)
-            out.append(_artifact("preview.glb", "glb", "assembly", path))
+            out.append(_artifact(name, "glb", part, path))
             continue
         for part in ("male", "female"):
             shape = getattr(result, part)

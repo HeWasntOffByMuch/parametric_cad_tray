@@ -388,9 +388,11 @@ def _submit(app: FastAPI, kind: str, request: BuildRequest, response: Response,
     job = app.state.jobs.submit(kind, effective, request.formats or DEFAULT_FORMATS[kind],
                                 client, session_id)
     # The cache key is what an artifact URL carries, so this is the row that
-    # lets a later download be attributed without rebuilding any geometry.
-    _safe(analytics.record_design, job.cache_key, job.params_hash, effective,
-          effective.quality.mode)
+    # lets a later download be attributed without rebuilding any geometry. A
+    # split preview has one key per half, and a download names one of those.
+    for storage_key in (job.part_keys.values() if job.part_keys else (job.cache_key,)):
+        _safe(analytics.record_design, storage_key, job.params_hash, effective,
+              effective.quality.mode)
     _safe(
         analytics.record_build_event,
         f"{kind}_requested", session_id=session_id, config_hash=job.params_hash,
@@ -437,10 +439,13 @@ def _job_response(job: Job) -> JobResponse:
     report = job.report or {}
     artifacts = {}
     for entry in report.get("artifacts", []):
+        # A split preview's halves live in two cache directories, so the URL has
+        # to name the one this artifact is actually in.
+        key = entry.get("cache_key") or job.cache_key
         artifacts[entry["name"]] = ArtifactModel(
             name=entry["name"], format=entry["format"], part=entry["part"],
             bytes=entry["bytes"], sha256=entry["sha256"],
-            url=f"/api/artifacts/{job.cache_key}/{entry['name']}",
+            url=f"/api/artifacts/{key}/{entry['name']}",
         )
     return JobResponse(
         id=job.id,
@@ -453,7 +458,11 @@ def _job_response(job: Job) -> JobResponse:
         cache_key=job.cache_key,
         cached=job.cached,
         artifacts=artifacts,
-        bundle_url=f"/api/artifacts/{job.cache_key}/bundle.zip" if artifacts else None,
+        # No bundle for a split build: its artifacts are in two directories and
+        # there is no single entry to zip. Exports are never split, so the one
+        # place a bundle is actually used still has one.
+        bundle_url=(f"/api/artifacts/{job.cache_key}/bundle.zip"
+                    if artifacts and not job.part_keys else None),
         diagnostics=report.get("diagnostics", []),
         derived=report.get("derived", {}),
         volumes_cm3=report.get("volumes_cm3", {}),

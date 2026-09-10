@@ -105,3 +105,37 @@ describe('engagement', () => {
     expect(fresh.markEngagedOnce()).toBe(false)
   })
 })
+
+describe('sending an event', () => {
+  it('never sends credentials, because the API refuses them', async () => {
+    // sendBeacon would be the obvious choice and is the wrong one: its
+    // credentials mode is "include", the API sets allow_credentials=False, and
+    // the preflight then fails so the event is dropped in silence.
+    const calls: any[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: any, init: any) => {
+      calls.push({ url: String(url), init })
+      return new Response(null, { status: 204 })
+    }))
+    const beacon = vi.fn(() => true)
+    vi.stubGlobal('navigator', { ...globalThis.navigator, sendBeacon: beacon })
+
+    vi.resetModules()
+    const fresh = await import('../src/analytics')
+    fresh.track('makerworld_clicked')
+
+    expect(beacon).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].init.credentials).toBe('omit')
+    expect(calls[0].init.keepalive).toBe(true)
+    expect(JSON.parse(calls[0].init.body).event).toBe('makerworld_clicked')
+    vi.unstubAllGlobals()
+  })
+
+  it('does not throw when the network is gone', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))))
+    vi.resetModules()
+    const fresh = await import('../src/analytics')
+    expect(() => fresh.track('app_opened')).not.toThrow()
+    vi.unstubAllGlobals()
+  })
+})

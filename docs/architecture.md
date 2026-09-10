@@ -511,6 +511,49 @@ they are fixed-cost OCC work on spline solids and do not scale with section coun
 The next lever is building each half as a single loft instead of a staged sequence
 of booleans, which would trade away the staged API; it has not been taken.
 
+### 8.5a Building the halves separately
+
+§8.4 notes that the two halves cost very different amounts and that preview time
+is dominated by fixed-cost booleans rather than by section count. Both facts
+point the same way, and the API now acts on them: **a preview builds the plug and
+the cavity as two independent jobs.**
+
+They are independent in the geometry, not merely in the code. The male *is* the
+base profile (offset 0); the female is that same profile offset by the forming
+gap and nothing else (§4.4); and `apply_features` guards every branch on which
+half it was handed. Nothing flows from one half into the other.
+
+Two consequences, both measured against a running API on the reference design:
+
+| the edit | wall | why |
+|---|---|---|
+| nothing changed | 0.00 s | both halves cached |
+| a cavity setting | 1.74 s | the plug's entry is untouched |
+| leather thickness | 1.80 s | moves the forming gap, so the cavity only |
+| a plug setting | 3.20 s | the cavity's entry is untouched |
+| tray length | 3.70 s | both rebuilt, but in parallel across two workers |
+| cold | 4.21 s | both halves, nothing cached |
+
+Each half is content addressed on the parameters that can reach it —
+`trayapi.cache.half_key`, with `IGNORED_BY` naming the exclusions. That list is a
+claim about geometry rather than about code structure, so it is proved rather
+than asserted: `test_split_keys.py` changes every excluded field and requires the
+half it is excluded from to come out volumetrically identical. The reverse
+direction is checked too, so a shared parameter cannot quietly fall out of a key.
+
+Only the *key* is projected. Both halves are built from the whole parameter
+document, so validation and the derived values are exactly what a combined build
+produces — which is why the forming gap can be absent from the plug's key without
+the plug's report claiming the wrong gap.
+
+Exports are not split: STEP and STL are per-part files already, a bundle spanning
+two cache directories has no meaning, and an export happens once per design.
+
+Where this does **not** help is a change to the shared inputs — the profile, the
+depth, the draft. Both halves rebuild then, and the win is only the parallelism.
+The lever §8.4 names — one loft per half instead of a staged sequence of booleans
+— is still the one that would move those.
+
 ### 8.5 Quality modes
 
 Both modes describe **the same geometry**: identical base profile, identical

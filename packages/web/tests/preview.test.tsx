@@ -54,7 +54,10 @@ describe('preview lifecycle', () => {
   it('builds the design it restored on load, with nothing clicked', async () => {
     await boot({ options: { autoPreview: true } })
     await waitFor(() => expect(status()).toBe('clean'), { timeout: 2000 })
-    expect(screen.getByTestId('viewer-canvas')).toHaveAttribute('data-url', '/api/artifacts/key/preview.glb')
+    // Two halves, two files, two cache directories.
+    const canvas = screen.getByTestId('viewer-canvas')
+    expect(canvas).toHaveAttribute('data-url-male', '/api/artifacts/key-male/male.glb')
+    expect(canvas).toHaveAttribute('data-url-female', '/api/artifacts/key-female/female.glb')
     expect(backend.previewCalls).toHaveLength(1)
     expect(backend.previewCalls.at(-1)!.tray.profile.length).toBe(175)
   })
@@ -83,7 +86,9 @@ describe('preview lifecycle', () => {
     await tick()
     await user.click(screen.getByRole('button', { name: /update preview/i }))
     await waitFor(() => expect(status()).toBe('clean'))
-    expect(screen.getByTestId('viewer-canvas')).toHaveAttribute('data-url', '/api/artifacts/key/preview.glb')
+    const shown = screen.getByTestId('viewer-canvas')
+    expect(shown).toHaveAttribute('data-url-male', '/api/artifacts/key-male/male.glb')
+    expect(shown).toHaveAttribute('data-url-female', '/api/artifacts/key-female/female.glb')
     expect(screen.getByTestId('preview-status')).toHaveTextContent(/up to date/i)
   })
 
@@ -264,7 +269,7 @@ describe('stale job handling', () => {
     // and even if it completes anyway, it must not become the displayed preview
     backend.settle(staleId, {
       state: 'complete', status: 'done',
-      artifacts: { 'preview.glb': { ...backend.glbArtifact()['preview.glb'], url: '/api/artifacts/STALE/preview.glb' } },
+      artifacts: backend.glbArtifact('STALE'),
     })
     await tick(800)
     const canvas = screen.queryByTestId('viewer-canvas')
@@ -393,5 +398,26 @@ describe('export', () => {
     await user.click(screen.getByTestId('export-button'))
     await waitFor(() => expect(screen.getByTestId('export-error')).toHaveTextContent(/time budget/i))
     expect(screen.queryByTestId('export-artifacts')).not.toBeInTheDocument()
+  })
+})
+
+describe('an API from before the preview split', () => {
+  it('still renders, from the single combined GLB', async () => {
+    // The frontend deploys independently of the API, so it can be ahead of it.
+    // One file holding both halves is handed to both slots; the viewer loads it
+    // once and finds each named node inside.
+    backend.previewResponse = (_params, id) =>
+      backend.job({
+        id, state: 'complete', status: 'done',
+        params_hash: backend.hashOf(_params),
+        artifacts: backend.legacyGlbArtifact(),
+      })
+    await boot({ options: { autoPreview: true } })
+    await waitFor(() => expect(status()).toBe('clean'), { timeout: 2000 })
+    const canvas = screen.getByTestId('viewer-canvas')
+    expect(canvas).toHaveAttribute('data-url-male', '/api/artifacts/key/preview.glb')
+    expect(canvas).toHaveAttribute('data-url-female', '/api/artifacts/key/preview.glb')
+    // Deduped, so the viewer is not asked to load the same file twice.
+    expect(canvas).toHaveAttribute('data-url', '/api/artifacts/key/preview.glb')
   })
 })
