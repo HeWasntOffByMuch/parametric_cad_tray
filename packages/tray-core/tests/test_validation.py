@@ -123,3 +123,47 @@ def test_raise_on_errors_passes_warnings_through():
     )
     assert "W-GAP-021" in codes(params, "warning")
     raise_on_errors(params)  # warnings must not block a build
+
+
+# --------------------------------------------------------------------------
+# the shell invariant
+# --------------------------------------------------------------------------
+def test_a_boolean_that_leaves_a_stray_face_is_refused():
+    """A volume bound cannot see a stray face, because a face weighs nothing.
+
+    The superellipse cavity cut came back with the right volume, the right
+    silhouette and a spare unclosed shell lying across the opening: it rendered
+    as a solid plate with a groove scribed on it, and every volume bound was
+    satisfied. BRepCheck_Analyzer calls that shape valid too. The shell count is
+    what says no.
+    """
+    import pytest
+
+    import traymold
+    from traymold.mold import BuildError
+    from traymold.params import SuperellipseProfile
+    from traymold.presets import REF_4X7_STEP
+
+    params = REF_4X7_STEP.model_copy(update={
+        "tray": REF_4X7_STEP.tray.model_copy(update={
+            "profile": SuperellipseProfile(length=175.0, width=105.0, exponent=4.0)}),
+        "mold": REF_4X7_STEP.mold.model_copy(update={
+            "parts": REF_4X7_STEP.mold.parts.model_copy(update={
+                "male": False, "female": True})}),
+    })
+    with pytest.raises(BuildError, match="stray face"):
+        traymold.build(params.with_quality("preview"))
+
+
+def test_the_invariant_counts_shells_rather_than_trusting_the_kernel():
+    from OCP.BRepCheck import BRepCheck_Analyzer
+
+    import traymold
+    from traymold.mold import _shells
+    from traymold.presets import REF_4X7_STEP
+
+    result = traymold.build(REF_4X7_STEP.with_quality("preview"))
+    for part in ("male", "female"):
+        solid = getattr(result, part)
+        assert _shells(solid) == (1, 1), f"{part} is not one closed shell"
+        assert BRepCheck_Analyzer(solid.wrapped).IsValid()

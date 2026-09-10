@@ -69,7 +69,8 @@ function FieldRenderer({ field, exclude, context, ...props }: Props & { field: F
   const gated = Boolean(hint?.requires === 'allow_experimental' && !props.allowExperimental)
   const diagnostics = diagnosticsFor(props.diagnostics, field.path)
 
-  if (field.kind === 'variant') return <VariantField field={field} exclude={exclude} context={context} {...props} />
+  if (field.kind === 'variant')
+    return <VariantField field={field} exclude={exclude} context={context} hint={hint} {...props} />
 
   if (field.kind === 'object') {
     return (
@@ -109,10 +110,15 @@ function FieldRenderer({ field, exclude, context, ...props }: Props & { field: F
  * fields. Switching variants carries over any field the two share, so changing
  * corner style does not silently reset the tray's dimensions.
  */
-function VariantField({ field, exclude, context, ...props }: Props & { field: Field; exclude: Set<string>; context?: string }) {
+function VariantField({ field, exclude, context, hint, ...props }: Props & { field: Field; exclude: Set<string>; context?: string; hint?: any }) {
   const current = getValue(props.value, field.path) ?? {}
   const key = String(current[field.discriminator ?? 'kind'] ?? field.variants?.[0]?.key)
   const variant = field.variants?.find((v) => v.key === key)
+  // A variant the backend cannot build is offered but not selectable, with the
+  // reason attached - the same rule the enum widget follows. Someone must not
+  // be able to pick a shape and only find out it is impossible after waiting
+  // for a build to fail.
+  const blocked: Record<string, { reason?: string }> = hint?.disabled_values ?? {}
   return (
     <fieldset className="object variant" data-field={field.path}>
       <legend>{field.title}</legend>
@@ -122,12 +128,14 @@ function VariantField({ field, exclude, context, ...props }: Props & { field: Fi
           value={key}
           options={(field.variants ?? []).map((v) => {
             const named = variantName(v.key, v.title)
+            const stopped = blocked[v.key]
             return {
               value: v.key,
               label: named.name,
               selectedLabel: named.full,
-              detail: named.detail,
+              detail: stopped?.reason ?? named.detail,
               group: named.group,
+              disabled: Boolean(stopped),
               icon: PROFILE_SHAPES[v.key] ? <ProfileIcon kind={v.key} /> : undefined,
             }
           })}

@@ -233,3 +233,28 @@ describe('grouping', () => {
     expect(button).toHaveTextContent('Rounded corners, seamless')
   })
 })
+
+describe('a shape the backend cannot build', () => {
+  it('is offered but not selectable, with the reason in place of the description', async () => {
+    const user = userEvent.setup()
+    const options: ListboxOption[] = [
+      { value: 'ok', label: 'Fine', group: 'Shapes', detail: 'builds' },
+      { value: 'broken', label: 'Squircle', group: 'Shapes', disabled: true,
+        detail: 'Not available yet — the cavity blend fails on this curve.' },
+    ]
+    const onChange = vi.fn()
+    render(<Listbox label="Shape" options={options} value="ok" onChange={onChange} />)
+    await user.click(screen.getByRole('combobox', { name: 'Shape' }))
+
+    const row = screen.getByRole('option', { name: /Squircle/ })
+    expect(row).toHaveAttribute('aria-disabled', 'true')
+    expect(row).toHaveTextContent('Not available yet')
+
+    await user.click(row)
+    expect(onChange).not.toHaveBeenCalled()
+
+    // and the keyboard cannot land on it either
+    await user.keyboard('{End}{Enter}')
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})

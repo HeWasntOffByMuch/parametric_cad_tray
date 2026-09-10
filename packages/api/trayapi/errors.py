@@ -56,6 +56,7 @@ def classify(exc: BaseException) -> tuple[str, str, list[dict]]:
     """
     from dataclasses import asdict
 
+    from traymold.mold import BuildError
     from traymold.profiles import OffsetError, ProfileError
     from traymold.validate import ValidationError
 
@@ -64,6 +65,14 @@ def classify(exc: BaseException) -> tuple[str, str, list[dict]]:
     if isinstance(exc, OffsetError):
         return OFFSET_VERIFICATION_FAILURE, PUBLIC_MESSAGE[OFFSET_VERIFICATION_FAILURE], []
     if isinstance(exc, ProfileError):
+        return GEOMETRY_BUILD_ERROR, str(exc), []
+    # A BuildError is a boolean invariant refusing a result, and its message
+    # names the step that failed and the one setting to change. Falling through
+    # to the generic sentence below threw all of that away: someone who picked
+    # an ellipse was told "the geometry kernel could not build this parameter
+    # set" when the code knew, and had written down, that the root blend was the
+    # problem and that turning it off builds the mold.
+    if isinstance(exc, BuildError):
         return GEOMETRY_BUILD_ERROR, str(exc), []
     name = type(exc).__name__
     if "Export" in name or "IOError" in name or isinstance(exc, OSError):

@@ -25,9 +25,12 @@ import cadquery as cq
 import numpy as np
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
 from OCP.BRepGProp import BRepGProp
+from OCP.BRep import BRep_Tool
 from OCP.BRepOffsetAPI import BRepOffsetAPI_ThruSections
 from OCP.gp import gp_Trsf, gp_Vec
 from OCP.GProp import GProp_GProps
+from OCP.TopAbs import TopAbs_SHELL
+from OCP.TopExp import TopExp_Explorer
 
 from .blends import compile_treatment
 from .derive import derive, forming_gap
@@ -184,11 +187,40 @@ def _clean(shape):
 _BOOLEAN_SLACK = 1e-2
 
 
+def _shells(shape) -> tuple[int, int]:
+    """How many shells the result has, and how many of those are closed.
+
+    One closed shell is what a solid is. Two means the boolean left something
+    behind that is not part of the boundary - a stray face, a sliver - and a
+    stray face weighs nothing, which is exactly why the volume bounds below
+    cannot see it.
+    """
+    total = closed = 0
+    explorer = TopExp_Explorer(shape.wrapped, TopAbs_SHELL)
+    while explorer.More():
+        total += 1
+        if BRep_Tool.IsClosed_s(explorer.Current()):
+            closed += 1
+        explorer.Next()
+    return total, closed
+
+
 def _checked(result, *, what: str, at_least: float = 0.0, at_most: float | None = None,
              remedy: str = ""):
     volume = _volume(result)
     if volume <= 0.0:
         raise BuildError(f"{what} produced an empty solid{remedy}")
+    # Topology before size. A superellipse cavity cut came back with the right
+    # volume, the right silhouette and a spare unclosed shell sitting across the
+    # opening: it rendered as a solid plate with a groove scribed on it, and
+    # every volume bound here was satisfied. BRepCheck_Analyzer calls that shape
+    # valid, so it is the shell count that has to say no.
+    total, closed = _shells(result)
+    if total != 1 or closed != 1:
+        raise BuildError(
+            f"{what} produced {total} shells ({closed} closed) rather than one closed "
+            f"solid - the boolean left a stray face behind{remedy}"
+        )
     if volume < at_least * (1.0 - _BOOLEAN_SLACK):
         raise BuildError(
             f"{what} produced {volume / 1000:.1f} cm3, below the {at_least / 1000:.1f} cm3 "

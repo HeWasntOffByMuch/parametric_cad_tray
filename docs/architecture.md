@@ -437,10 +437,51 @@ the export target of 2 µm the reference gets 15 sections on the 1.2 mm root
 fillet, 35 on the 5 mm floor blend and 28 on the 3 mm cavity entry — instead of a
 flat 48 everywhere, for the same fidelity and 40 % fewer offsets.
 
+### 7.8a A volume bound cannot see a stray face
+
+Every boolean is bounded by volume (§7.x, `_checked`): a fuse cannot shrink a
+solid, a cut cannot grow one, neither may return nothing. That catches the loud
+failures. It does not catch this one:
+
+A superellipse cavity cut came back with the right volume, the right silhouette,
+and **a spare unclosed shell lying across the opening**. It rendered as a solid
+plate with a groove scribed on it. Every volume bound was satisfied, because a
+face weighs nothing. `BRepCheck_Analyzer` calls the shape valid. A finer mesh
+does not help — at 2.6 million triangles the stray face is still there, because
+it is in the B-rep and not in the tessellation.
+
+What says no is the **shell count**. A solid is one closed shell; anything else
+is the kernel handing back debris alongside the answer:
+
+```python
+total, closed = _shells(result)
+if total != 1 or closed != 1:
+    raise BuildError(f"{what} produced {total} shells ({closed} closed) …")
+```
+
+The lesson generalises: size invariants catch failures of *magnitude*, and
+topology invariants catch failures of *structure*. This codebase had only the
+first.
+
 ### 7.9 Still open
 Draft (`tray.draft_angle`) is **experimental**: see §9. Flange relief and plate
 edge chamfer are in the schema but not in the geometry. `tray.datum = "outer"` is
 explicitly refused (`E-DATUM-001`) rather than silently reinterpreted.
+
+**Two plan curves do not take every treatment**, each refused by
+`trayapi.policy` before a worker is asked to build them:
+
+| shape | what fails | status |
+|---|---|---|
+| ellipse | the root-blend fuse returns an empty solid — the collar's top wire *is* the plug wall, and an ellipse has no straight runs to make that contact planar | refused **with the root blend on**; builds fully without it, preview and export, both halves |
+| superellipse | the entry-blend cut leaves a stray shell (§7.8a), *and* the floor blend cannot be lofted above 8 sections — export uses 35 | refused **outright**: turning the entry blend off gets a preview that cannot be exported, which is worse than a refusal |
+
+Both are curves with continuously varying curvature and no straight segments,
+which is the property the staged-boolean construction struggles with. The fix
+for both is the lever §8.4 names — building each half as a single loft instead
+of a sequence of booleans. Lofting the root blend into the plug was tried and
+does build an ellipse; it also moved the reference volume by 165 cm³, so it is a
+change to make deliberately and verify against the reference STEP, not a patch.
 
 ---
 

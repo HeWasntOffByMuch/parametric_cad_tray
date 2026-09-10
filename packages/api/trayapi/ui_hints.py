@@ -60,6 +60,19 @@ UI_HINTS = {
     ],
     "hidden": ["schema_version", "name"],
     "fields": {
+        "tray.profile": {
+            # Offered in the picker but not selectable, with the reason shown in
+            # place of the usual one-line description. Both were found by
+            # building them; see trayapi.policy.UNSUPPORTED_COMBINATIONS and
+            # docs/architecture.md 7.9.
+            "disabled_values": {
+                "superellipse": {
+                    "code": "E-PROFILE-ENTRY-BLEND",
+                    "reason": "Not available yet — the cavity's entry blend and the "
+                              "plug's floor blend both fail on this curve.",
+                },
+            }
+        },
         "tray.profile.length": {"unit": "mm", "step": 1, "slider": [40, 400]},
         "tray.profile.width": {"unit": "mm", "step": 1, "slider": [40, 300]},
         "tray.profile.corner_setback": {"unit": "mm", "step": 1},

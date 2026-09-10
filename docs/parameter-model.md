@@ -347,6 +347,8 @@ implemented; the rest are specified for the validation milestone.
 | `E-GAP-025` ✓ | error | `forming_gap ≥ max_outward_offset` (the **concave** minimum radius) | the outward offset would cusp. For a convex profile this is `inf`, so a gap larger than the convex minimum radius is **valid** and must not be refused |
 | `E-GAP-026` ✓ | error | realised offset distance ≠ requested within 10 µm | OCC degraded silently — refuse, never ship |
 | `E-DATUM-001` ✓ | error | `tray.datum != "inner"` | no outer→inner conversion exists; never reinterpret silently |
+| `E-PROFILE-ROOT-BLEND` ✓ | error | an **ellipse** with `male_root_blend` active | the fuse returns an empty solid; turn the blend off and the shape builds fully |
+| `E-PROFILE-SUPERELLIPSE` ✓ | error | profile kind is **superellipse** | two steps fail on this curve and one only at export, so it is refused outright rather than with a workaround that yields an unexportable preview |
 | `W-GAP-021` ✓ | warn | `forming_gap < 0.4` | below FDM resolution; the halves fuse |
 | `E-MOLD-040` ✓ | error | `cavity_plate_thickness < depth` | the plug protrudes |
 | `E-MOLD-041` ✓ | error | `female_flange_width < min_wall` | i.e. `flange_width − gap < min_wall` |
