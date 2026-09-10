@@ -115,3 +115,62 @@ describe('value helpers', () => {
     expect(after).toHaveProperty('corner_radius')
   })
 })
+
+describe('a variant with no schema default', () => {
+  it('falls back to a value the bound actually accepts', async () => {
+    // The safety net was there and was wrong: it fell back to the bound itself,
+    // and a field declared `> 0` rejects 0 just as it rejects nothing at all.
+    // "missing" became "must be greater than 0" and the form stayed stuck.
+    const { variantDefaults } = await import('../src/form/schema')
+    const field: any = {
+      path: 'mold.male_root_blend',
+      name: 'male_root_blend',
+      kind: 'variant',
+      discriminator: 'kind',
+      variants: [
+        {
+          key: 'circular_fillet',
+          title: 'CircularFillet',
+          fields: [
+            // exactly Pydantic's `Field(gt=0.0, le=100.0)` with no default
+            { path: 'x', name: 'radius', kind: 'number', required: true,
+              nullable: false, exclusiveMinimum: 0, maximum: 100 },
+          ],
+        },
+      ],
+    }
+    const next: any = variantDefaults(field, 'circular_fillet', undefined)
+    expect(next.kind).toBe('circular_fillet')
+    expect(next.radius).toBeGreaterThan(0)
+    expect(next.radius).toBeLessThanOrEqual(100)
+  })
+
+  it('stays inside a narrow exclusive range rather than stepping past it', async () => {
+    const { variantDefaults } = await import('../src/form/schema')
+    const field: any = {
+      path: 'p', name: 'p', kind: 'variant', discriminator: 'kind',
+      variants: [{
+        key: 'conic', title: 'Conic',
+        // `rho` is 0 < rho < 1: a naive "bound + 1" would emit 1, which is out
+        fields: [{ path: 'x', name: 'rho', kind: 'number', required: true,
+                   nullable: false, exclusiveMinimum: 0, exclusiveMaximum: 1 }],
+      }],
+    }
+    const next: any = variantDefaults(field, 'conic', undefined)
+    expect(next.rho).toBeGreaterThan(0)
+    expect(next.rho).toBeLessThan(1)
+  })
+
+  it('prefers the schema default when there is one', async () => {
+    const { variantDefaults } = await import('../src/form/schema')
+    const field: any = {
+      path: 'p', name: 'p', kind: 'variant', discriminator: 'kind',
+      variants: [{
+        key: 'k', title: 'K',
+        fields: [{ path: 'x', name: 'radius', kind: 'number', required: true,
+                   nullable: false, exclusiveMinimum: 0, maximum: 100, default: 2 }],
+      }],
+    }
+    expect((variantDefaults(field, 'k', undefined) as any).radius).toBe(2)
+  })
+})

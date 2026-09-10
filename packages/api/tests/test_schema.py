@@ -55,3 +55,79 @@ def test_presets_include_both_reference_revisions(client):
     assert by_name["ref-4x7"]["params"]["features"]["clamp_holes"]["enabled"] is True
     for preset in presets:
         Params.model_validate(preset["params"])
+
+
+def test_every_variant_of_every_union_is_reachable_from_the_form():
+    """A variant must be constructible from its discriminator alone.
+
+    The form's variant switcher emits the discriminator plus whatever the schema
+    gives a default. A required field with no default is therefore emitted as
+    undefined, dropped by JSON.stringify, and rejected as missing before the
+    user has touched anything - so the variant simply cannot be chosen.
+
+    This happened to the eight profile families once and to the three edge
+    treatments again afterwards, because the first fix checked one union rather
+    than the rule. This checks the rule: walk the served schema, find every
+    discriminated union, and require each variant to validate from its tag.
+    """
+    from traymold.api import json_schema
+    from traymold.params import Params
+
+    schema = json_schema()
+    definitions = schema.get("$defs", {})
+
+    def deref(node):
+        while "$ref" in node:
+            node = definitions[node["$ref"].rsplit("/", 1)[-1]]
+        return node
+
+    def unions(node, path="params"):
+        """Every (path, discriminator, [variant names]) in the document."""
+        node = deref(node)
+        found = []
+        one_of = node.get("oneOf")
+        discriminator = node.get("discriminator")
+        if one_of and discriminator:
+            found.append((path, discriminator["propertyName"],
+                          [deref(o) for o in one_of]))
+            for option in one_of:
+                found += unions(deref(option), f"{path}.<{discriminator['propertyName']}>")
+        for name, child in (node.get("properties") or {}).items():
+            found += unions(child, f"{path}.{name}")
+        return found
+
+    everything = unions(schema)
+    assert everything, "no discriminated unions found - has the schema changed shape?"
+
+    missing = []
+    for path, discriminator, variants in everything:
+        for variant in variants:
+            required = set(variant.get("required", []))
+            properties = variant.get("properties", {})
+            tag = properties.get(discriminator, {}).get("const")
+            for name in sorted(required - {discriminator}):
+                if "default" not in properties.get(name, {}):
+                    missing.append(f"{path} -> {tag}.{name}")
+
+    assert not missing, (
+        "these variant fields are required with no default, so the form cannot "
+        "select the variant at all:\n  " + "\n  ".join(missing)
+    )
+
+
+def test_switching_a_variant_by_tag_alone_validates():
+    """The same rule, end to end: the tag is all the form is guaranteed to send."""
+    import copy
+
+    from traymold.params import Params
+    from traymold.presets import REF_4X7_STEP
+
+    document = REF_4X7_STEP.model_dump(mode="json")
+    treatments = ("male_root_blend", "male_floor_blend",
+                  "female_entry_blend_top", "female_entry_blend_bottom")
+    kinds = ("none", "circular_fillet", "g2_quintic_blend", "chamfer")
+    for field in treatments:
+        for kind in kinds:
+            body = copy.deepcopy(document)
+            body["mold"][field] = {"kind": kind}
+            Params.model_validate(body)   # raises if a field has no default

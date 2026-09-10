@@ -193,13 +193,19 @@ class FitParams(_Model):
 # --------------------------------------------------------------------------
 # 3. 3D edge treatments - applied AFTER the base profiles exist
 # --------------------------------------------------------------------------
+# Every edge treatment defaults its own size. A required field with no default
+# is unreachable from a form: the variant switcher emits the discriminator plus
+# whatever has a default, JSON.stringify drops the undefined, and the server
+# answers 422 before the user has touched anything. That happened to the profile
+# families once already; `test_schema.py` now asserts it for every variant of
+# every union rather than for one union at a time.
 class CircularFillet(_Model):
     """Constant-radius rolling-ball fillet.  The male root treatment in the
     reference: cylindrical faces on the straight runs, exact circular sweeps at
     the corners."""
 
     kind: Literal["circular_fillet"] = "circular_fillet"
-    radius: float = Field(gt=0.0, le=100.0, description="fillet radius, mm")
+    radius: float = Field(default=2.0, gt=0.0, le=100.0, description="fillet radius, mm")
 
     @property
     def size(self) -> float:
@@ -218,7 +224,8 @@ class G2QuinticBlend(_Model):
     """The reference's curvature-continuous blend, given by its setback."""
 
     kind: Literal["g2_quintic_blend"] = "g2_quintic_blend"
-    setback: float = Field(gt=0.0, le=100.0, description="setback from the sharp edge, mm")
+    setback: float = Field(default=3.0, gt=0.0, le=100.0,
+                           description="setback from the sharp edge, mm")
 
     @property
     def size(self) -> float:
@@ -235,7 +242,7 @@ class G2QuinticBlend(_Model):
 
 class ChamferTreatment(_Model):
     kind: Literal["chamfer"] = "chamfer"
-    distance: float = Field(gt=0.0, le=100.0, description="chamfer distance, mm")
+    distance: float = Field(default=2.0, gt=0.0, le=100.0, description="chamfer distance, mm")
 
     @property
     def size(self) -> float:

@@ -272,8 +272,19 @@ export function setValue(doc: Json, path: string, value: any): Json {
 function fallbackFor(field: Field): any {
   switch (field.kind) {
     case 'number':
-    case 'integer':
-      return field.minimum ?? field.exclusiveMinimum ?? 0
+    case 'integer': {
+      if (field.minimum !== undefined) return field.minimum
+      // An *exclusive* minimum is the one bound its own value fails: a field
+      // declared `> 0` rejects 0, so falling back to the bound turns "missing"
+      // into "must be greater than 0" and the form is just as stuck. Step
+      // inside the range instead, and stay under any maximum.
+      if (field.exclusiveMinimum !== undefined) {
+        const lo = field.exclusiveMinimum
+        const hi = field.maximum ?? field.exclusiveMaximum ?? lo + 2
+        return Math.min(lo + 1, (lo + hi) / 2)
+      }
+      return 0
+    }
     case 'boolean':
       return false
     case 'enum':
