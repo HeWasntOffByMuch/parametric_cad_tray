@@ -54,9 +54,18 @@ def test_male_forming_profile_matches_step(built, male_ref, z):
     assert dev["max"] <= TOL, f"z={z}: max deviation {dev['max'] * 1e3:.2f} um"
 
 
-@pytest.mark.parametrize("z", [0.5, 5.0, 12.5, 20.0, 22.0, 23.0, 24.0, 24.5, 24.9])
+@pytest.mark.parametrize("z", [0.1, 0.5, 1.0, 2.0, 5.0, 12.5, 20.0, 24.0, 24.5, 24.9])
 def test_female_cavity_profile_matches_step(built, female_ref, z):
-    dev = R.compare_forming_profiles(built.female, female_ref, z)
+    """The cavity still matches the reference exactly - mirrored in z.
+
+    The reference file is a slicer export of the female lying cavity-up, so its
+    blended end is the end that meets the male. We build in assembly
+    orientation, which makes a height in one the mirror of a height in the
+    other. The sampled heights cluster at both ends on purpose: that is where
+    the blend is in one orientation or the other, and where getting the mapping
+    wrong would show.
+    """
+    dev = R.compare_forming_profiles(built.female, female_ref, z, flipped=True)
     assert dev["max"] <= TOL, f"z={z}: max deviation {dev['max'] * 1e3:.2f} um"
 
 
@@ -168,9 +177,18 @@ def test_female_volume_matches_the_analytic_construction(built):
     perim = float(np.sum(np.linalg.norm(np.diff(np.vstack([s, s[:1]]), axis=0), axis=1)))
     d = derive_params(REF_4X7_STEP)
     t = REF_4X7_STEP.mold.cavity_plate_thickness
-    law = compile_treatment(REF_4X7_STEP.mold.female_entry_blend_top)
-    h = np.linspace(0.0, law.size, 200001)
-    lat = law.lateral(h)
-    entry = perim * float(np.trapezoid(lat, h)) + np.pi * float(np.trapezoid(lat**2, h))
+    # Both ends, because which one is blended is a choice and not a constant.
+    # Reading `_top` alone made this test measure a blend that was no longer
+    # there the moment the default moved to the parting face - and the 0.74 cm3
+    # it then disagreed by was exactly the blend it had stopped counting.
+    entry = 0.0
+    for treatment in (REF_4X7_STEP.mold.female_entry_blend_top,
+                      REF_4X7_STEP.mold.female_entry_blend_bottom):
+        if not treatment.active:
+            continue
+        law = compile_treatment(treatment)
+        h = np.linspace(0.0, law.size, 200001)
+        lat = law.lateral(h)
+        entry += perim * float(np.trapezoid(lat, h)) + np.pi * float(np.trapezoid(lat**2, h))
     expected = (d["plate_length"] * d["plate_width"] * t - area * t - entry) / 1000.0
     assert R.volume_cm3(built.female) == pytest.approx(expected, rel=5e-4)

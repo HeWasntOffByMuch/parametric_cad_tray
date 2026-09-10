@@ -140,8 +140,8 @@ the diagnostics speak in.
 |---|---|---|
 | `male_root_blend` | `CircularFillet(radius=1.2)` | plug ↔ base plate junction (adds material) |
 | `male_floor_blend` | `G2QuinticBlend(setback=5.0)` | plug top edge = the tray's floor radius |
-| `female_entry_blend_top` | `G2QuinticBlend(setback=3.0)` | cavity mouth, top face |
-| `female_entry_blend_bottom` | `NoTreatment()` | cavity mouth, bottom face (sharp in the reference) |
+| `female_entry_blend_bottom` | `G2QuinticBlend(setback=3.0)` | cavity mouth on the **parting face** — the one the plug enters and the leather is drawn across, so the one that has to be radiused |
+| `female_entry_blend_top` | `NoTreatment()` | the outer face, where nothing bends; blend it only for looks |
 
 The reference deliberately mixes vocabularies — a true circular rolling-ball
 fillet at the root, the G2 quintic everywhere else — so the style is per
@@ -226,8 +226,8 @@ Params(
         cavity_plate_thickness=25.0,
         male_root_blend=CircularFillet(radius=1.2),
         male_floor_blend=G2QuinticBlend(setback=5.0),
-        female_entry_blend_top=G2QuinticBlend(setback=3.0),
-        female_entry_blend_bottom=NoTreatment(),
+        female_entry_blend_bottom=G2QuinticBlend(setback=3.0),
+        female_entry_blend_top=NoTreatment(),
     ),
     features=Features(
         clamp_holes=ClampHoles(enabled=True, pattern="diagonal_pair", diagonal="nw_se",

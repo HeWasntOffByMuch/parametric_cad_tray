@@ -293,8 +293,13 @@ class MoldParams(_Model):
     # each treatment is independent, semantically typed, and owns its own parameter
     male_root_blend: EdgeTreatmentSpec = CircularFillet(radius=1.2)
     male_floor_blend: EdgeTreatmentSpec = G2QuinticBlend(setback=5.0)
-    female_entry_blend_top: EdgeTreatmentSpec = G2QuinticBlend(setback=3.0)
-    female_entry_blend_bottom: EdgeTreatmentSpec = NoTreatment()
+    #: `bottom` is z=0, the parting face: the mouth the plug enters and the
+    #: leather is drawn across, so it is the one that has to be radiused. `top`
+    #: is the outer face, where nothing bends - blend it only if you want the
+    #: look. The reference files carry this blend on their other face because
+    #: they are slicer exports of the part lying cavity-up; see `apply_features`.
+    female_entry_blend_bottom: EdgeTreatmentSpec = G2QuinticBlend(setback=3.0)
+    female_entry_blend_top: EdgeTreatmentSpec = NoTreatment()
 
     plate_edge_chamfer: float = Field(default=0.0, ge=0.0, le=10.0)
     flange_relief_depth: float = Field(default=0.0, ge=0.0, le=20.0)

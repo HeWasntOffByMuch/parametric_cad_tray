@@ -429,7 +429,20 @@ def _corner_points(params, inset: float, diagonal: str, pattern: str):
 
 
 def apply_features(male, female, params):
-    """Manufacturing features.  Downstream of everything; inputs to nothing."""
+    """Manufacturing features.  Downstream of everything; inputs to nothing.
+
+    Everything the female carries that is not symmetric in z belongs on **z=0,
+    the parting face** - the one that meets the male's base plate and that the
+    leather is drawn across. The entry blend, the pry notches and the clamp
+    chamfer all sit there, and the alignment pin holes already did.
+
+    The reference files disagree, and they are not wrong: they are slicer
+    exports. `reference_render_preview.webp` is a print bed, the female laid
+    cavity-mouth-up, and all three of its features are on the printed-up face -
+    which is the face that meets the male once you turn it over to use it.
+    Copying the stored orientation put them on the outside, where a pry notch
+    stopped 17 mm short of the seam it exists to open.
+    """
     f = params.features
     t = params.mold.cavity_plate_thickness
     bp = params.mold.base_plate_thickness
@@ -442,11 +455,14 @@ def apply_features(male, female, params):
                 cut = cq.Workplane("XY").workplane(offset=-1.0).center(x, y).circle(ch.diameter / 2).extrude(t + 2.0)
                 female = cq.Solid(female.cut(cut.val()).wrapped)
                 if ch.top_chamfer > 0:
+                    # Widening downwards from z=0: the chamfer belongs on the
+                    # parting face, with the blend and the notches. See the note
+                    # on the female's orientation below.
                     cs = (
-                        cq.Workplane("XY").workplane(offset=t - ch.top_chamfer).center(x, y)
-                        .circle(ch.diameter / 2)
-                        .workplane(offset=ch.top_chamfer)
+                        cq.Workplane("XY").center(x, y)
                         .circle(ch.diameter / 2 + ch.top_chamfer)
+                        .workplane(offset=ch.top_chamfer)
+                        .circle(ch.diameter / 2)
                         .loft()
                     )
                     female = cq.Solid(female.cut(cs.val()).wrapped)
@@ -466,8 +482,11 @@ def apply_features(male, female, params):
         for sx, sy in signs if female is not None else []:
             x = sx * (cx - pn.size_x / 2.0)
             y = sy * (cy - pn.size_y / 2.0)
+            # Open at z=0, the parting face. A notch that stops short of the
+            # parting line is a handle, not a pry point: you lever the halves
+            # apart at the seam, so the rebate has to reach it.
             cut = (
-                cq.Workplane("XY").workplane(offset=t - pn.depth).center(x, y)
+                cq.Workplane("XY").workplane(offset=-1.0).center(x, y)
                 .rect(pn.size_x, pn.size_y).extrude(pn.depth + 1.0)
             )
             female = cq.Solid(female.cut(cut.val()).wrapped)

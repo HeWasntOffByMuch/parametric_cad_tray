@@ -101,9 +101,23 @@ def deviation(a: np.ndarray, b: np.ndarray, resample: int = 8000) -> dict:
     return {"min": float(d.min()), "max": float(d.max()), "rms": float(np.sqrt((d**2).mean()))}
 
 
-def compare_forming_profiles(built, reference, z_built: float, per_edge: int = 300) -> dict:
+#: The female reference is stored upside down relative to how it is used.
+#: `reference_render_preview.webp` shows why: the files are slicer exports, and
+#: the female is laid on the bed cavity-mouth-up. Its entry blend, its pry
+#: notches and its clamp chamfers are all on the printed-up face - which becomes
+#: the face that meets the male the moment you turn it over.
+#:
+#: traymold builds in assembly orientation (z=0 is the parting face), so a
+#: height in one is the mirror of a height in the other. Comparing without this
+#: would compare the blended end against the sharp one.
+FEMALE_THICKNESS = 25.0
+
+
+def compare_forming_profiles(built, reference, z_built: float, per_edge: int = 300,
+                             flipped: bool = False) -> dict:
     a = forming_loop(built, z_built, per_edge=per_edge)
-    b = forming_loop(reference, z_built + Z_SHIFT, per_edge=per_edge)
+    z_ref = (FEMALE_THICKNESS - z_built) if flipped else z_built
+    b = forming_loop(reference, z_ref + Z_SHIFT, per_edge=per_edge)
     return deviation(a, b)
 
 

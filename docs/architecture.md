@@ -179,14 +179,37 @@ MALE   993.796 cm³ · 25 faces: 9 PLANE, 2 CYLINDER, 14 B_SPLINE_SURFACE
 FEMALE 517.830 cm³ · 18 faces: 8 PLANE, 10 B_SPLINE_SURFACE (no cylinders)
   plate        235 × 165 × 25, sharp
   cavity       through, draft 0.000°
-  entry blend  G2 template, setback 3.0, on the top face only
-  bottom edge  sharp
+  entry blend  G2 template, setback 3.0, on the PARTING face only
+  outer edge   sharp
 
 STL revision only:
   clamp holes  2 × Ø6 through at (∓102.5, ±67.5), 15 mm in from both edges,
-               one diagonal, 2 mm × 45° chamfer on the top face
-  pry notches  2 × 15 × 15 corner rebates on the *other* diagonal, 8 mm deep
+               one diagonal, 2 mm × 45° chamfer on the PARTING face
+  pry notches  2 × 15 × 15 corner rebates on the *other* diagonal, 8 mm deep,
+               opening onto the PARTING face
 ```
+
+**The reference files are stored upside down**, and they are not wrong -
+`reference/reference_render_preview.webp` is a slicer bed, with the female laid
+cavity-mouth-up so the entry radius prints clean and the notches print without
+support. All three of its asymmetric features — entry blend, pry notches, clamp
+chamfers — are on the printed-up face, which is the face that meets the male the
+moment you turn the part over to use it.
+
+Measured on `4x7-female-wetmold.stl` (its own frame, z 25 → 50, with 25 sitting
+against the male's plate):
+
+```
+cavity half-width   90.500 mm from z 25 to 47, then 91.035 at 49, 92.127 at 49.8
+pry-notch void      z 42 → 50
+clamp chamfer       bore 3.0 → 5.0 over z 48 → 50
+```
+
+traymold builds in **assembly** orientation — z=0 is the parting face, +Z the
+plug direction — so every one of those belongs at z=0 here, and the tests
+compare against the reference with the mirror stated explicitly
+(`compare_forming_profiles(..., flipped=True)`) rather than by moving the
+sampled heights out of the way.
 
 The root blend being a genuine circular fillet while every other blend is the G2
 quintic is deliberate, and visible in the face types. A model that forces one
