@@ -9,7 +9,8 @@ packages/tray-core   the geometry. CadQuery + Pydantic. The source of truth.
 packages/api         FastAPI over the core, with process-isolated CAD workers.
 packages/web         React + TypeScript + Vite + React Three Fiber.
 deploy/              the image, the compose stack and the smoke script.
-tools/reference_probe  measurement scripts behind every number in the docs.
+tools/reference_probe  measurement scripts behind every number in the docs
+tools/print_study      what the pair costs to print, and a 3MF-with-settings prototype
 reference/           the original STEP and STL pair this was reverse-engineered from.
 ```
 
@@ -44,6 +45,7 @@ make deploy-down
 | [`docs/frontend.md`](docs/frontend.md) | the browser application, its state machine and viewer |
 | [`docs/deployment.md`](docs/deployment.md) | GitHub Pages, the VPS, and rehearsing both locally |
 | [`docs/analytics.md`](docs/analytics.md) | what the public usage counter counts, and the data behind it |
+| [`docs/material-optimisation.md`](docs/material-optimisation.md) | what the pair costs to print, where the material actually goes, and a 3MF export that carries print settings |
 
 ## The rule the whole project is built around
 
