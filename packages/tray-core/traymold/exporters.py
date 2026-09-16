@@ -5,8 +5,9 @@ worker that owns the OCC solids is the only thing that ever touches them.
 
 Two frames leave here.  The GLB keeps the frame the solids are built in -
 assembly orientation - because the viewer has to show the two halves closed.
-STEP and STL are print-oriented: `print_oriented` turns the female over so the
-face that goes on the bed is the flat one.
+STEP, STL and 3MF are print-oriented: `print_oriented` turns the female over so
+the face that goes on the bed is the flat one.  The 3MF also carries the print
+plan, whose regions are turned over with their part - see `threemf`.
 
 Traceability: every format carries the params hash and the versions that produced
 it, in whatever channel the format allows - STEP in its header, STL in its 80-byte
@@ -172,8 +173,16 @@ def print_oriented(shape, part: str):
 
 
 def write_artifacts(
-    result, outdir: Path, formats: Sequence[str], *, quality: Quality | None = None
+    result, outdir: Path, formats: Sequence[str], *, quality: Quality | None = None,
+    params=None,
 ) -> list:
+    """Turn built solids into files.
+
+    `params` is needed only by 3MF, which carries print settings and therefore
+    has to ask `printplan` what they are.  It is not defaulted: a 3MF written
+    against a guessed parameter document would be a file that says the wrong
+    thing about how to print it, which is worse than no file.
+    """
     from .api import Artifact
 
     quality = quality or DEFAULTS["export"]
@@ -188,6 +197,26 @@ def write_artifacts(
     }
 
     for fmt in formats:
+        if fmt == "3mf":
+            from .printplan import resolve as resolve_plan
+            from .threemf import write as write_3mf
+
+            if params is None:
+                raise ValueError(
+                    "3MF export needs the parameter document: the file carries "
+                    "print settings, and they are read from `params.print`"
+                )
+            if not printed:
+                continue
+            # The plan moves with the parts. `oriented` is the only supported
+            # way to do that; see the frame note in `threemf`.
+            plan = resolve_plan(params).oriented(print_oriented)
+            part = next(iter(printed)) if len(printed) == 1 else "assembly"
+            name = f"{part}.3mf" if part != "assembly" else "tray-mold.3mf"
+            path = outdir / name
+            write_3mf(path, printed, plan, quality, trace)
+            out.append(_artifact(name, "3mf", part, path))
+            continue
         if fmt == "glb":
             # `result`, not `printed`: the viewer needs assembly orientation.
             present = [p for p in ("male", "female") if getattr(result, p) is not None]
@@ -230,10 +259,11 @@ def _artifact(name: str, fmt: str, part: str, path: Path):
 # --------------------------------------------------------------------------
 # kept for the CLI
 # --------------------------------------------------------------------------
-def export_all(result, outdir: str | Path, params) -> dict[str, Path]:
+def export_all(result, outdir: str | Path, params, formats=None) -> dict[str, Path]:
     from .quality import resolve
 
     artifacts = write_artifacts(
-        result, Path(outdir), ("step", "stl"), quality=resolve(params)
+        result, Path(outdir), formats or ("step", "stl"), quality=resolve(params),
+        params=params,
     )
     return {a.name: Path(a.path) for a in artifacts}

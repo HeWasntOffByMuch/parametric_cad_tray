@@ -20,6 +20,9 @@ export class FakeBackend {
    *  alike - which is the case that used to leave the app with no diagnostics
    *  at all. Set the diagnostics; the harness wraps them in the API's envelope. */
   rejectWith: ((params: Json) => any[] | null) | null = null
+  /** Gated capabilities the deployment claims to offer. null serves whatever
+   *  the captured fixture has, which is every flag off - the shipping default. */
+  features: Record<string, boolean> | null = null
   /** Public counters the app may display; null means the endpoint is absent. */
   stats: any = null
   statsError = false
@@ -55,6 +58,7 @@ export class FakeBackend {
       derived: {},
       volumes_cm3: {},
       timings: {},
+      print_ledger: {},
       error: null,
       ...overrides,
     }
@@ -94,7 +98,8 @@ export class FakeBackend {
       const ok = (payload: any, status = 200) =>
         new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
 
-      if (url.endsWith('/api/schema')) return ok(SCHEMA)
+      if (url.endsWith('/api/schema'))
+        return ok(backend.features ? { ...SCHEMA, features: backend.features } : SCHEMA)
       if (url.endsWith('/api/stats')) {
         if (backend.statsError) return new Response('nope', { status: 503 })
         return ok(backend.stats ?? { custom_molds_generated: 0, unique_designs_downloaded: 0,
@@ -167,6 +172,30 @@ export class FakeBackend {
 
       return ok({ detail: 'not found' }, 404)
     }))
+  }
+
+  /** What an export that wrote a 3MF reports back: the same geometry priced
+   *  under each infill option, and the regions that put density back in. */
+  ledger() {
+    return {
+      profile: 'lean',
+      assumptions: {
+        extrusion_width: 0.45, layer_height: 0.2, filament_density_g_cm3: 1.24,
+        reference: '6 perimeters, 30 % infill',
+        accuracy: 'shell-plus-infill estimate, about +/-15 % absolute',
+      },
+      options: [
+        { option: '6 perimeters, 30 % infill', reference: true, selected: false, cm3: 641.6, grams: 796, vs_reference_pct: 0 },
+        { option: 'slicer', reference: false, selected: false, cm3: null, grams: null, vs_reference_pct: null, note: 'whatever your own preset does' },
+        { option: 'balanced', reference: false, selected: false, cm3: 422.9, grams: 524, vs_reference_pct: -34 },
+        { option: 'lean', reference: false, selected: true, cm3: 360.9, grams: 448, vs_reference_pct: -44 },
+      ],
+      regions: [
+        { part: 'female', name: 'clamp-bearing-0', cm3: 12.7, from_density: 0.1, to_density: 0.7,
+          delta_cm3: 7.6, why: 'a clamp puts a concentrated load through the plate here' },
+      ],
+      solid_cm3: { male: 994.2, female: 512.4 },
+    }
   }
 
   /** Resolve a job that was returned as queued/running, as SSE or polling would. */

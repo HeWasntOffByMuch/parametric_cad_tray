@@ -10,6 +10,7 @@ share one build.
                   with the requested quality and part selection already folded in
         env:      schema version, model version, cadquery and OCP versions
         formats:  the requested artifact formats, sorted
+        print:    the print plan, and ONLY when a format reads it
     })
 
 `quality` and `parts` do not appear as separate terms because `apply_options`
@@ -37,6 +38,13 @@ RESULT_FILE = "result.json"
 BUNDLE_NAME = "bundle.zip"
 
 
+#: Formats whose bytes depend on `params.print`.  The core excludes the print
+#: plan from `canonical_params` because it cannot move a surface; it still has to
+#: be in the key of a file that contains it, and in nothing else's - otherwise
+#: picking a different infill option rebuilds geometry that cannot show it.
+PRINT_AWARE_FORMATS = frozenset({"3mf"})
+
+
 def cache_key(effective_params, formats: Sequence[str]) -> str:
     from traymold.api import canonical_json, canonical_params, environment
 
@@ -45,6 +53,8 @@ def cache_key(effective_params, formats: Sequence[str]) -> str:
         "env": environment(),
         "formats": sorted(set(formats)),
     }
+    if PRINT_AWARE_FORMATS.intersection(formats):
+        payload["print"] = effective_params.print.model_dump(mode="json")
     return hashlib.sha256(canonical_json(payload).encode()).hexdigest()
 
 

@@ -172,7 +172,29 @@ Reference note: clamp holes sit on one diagonal and pry notches on the other, so
 `diagonal` is part of the schema — the female has C2 rotational symmetry, not
 mirror symmetry.
 
-### 2.7 `manufacturing` and `quality`
+### 2.7 `print`: how it is printed, not what it is
+
+The third thing the schema keeps apart from geometry, and the newest. Read by
+the 3MF export and by nothing else — no profile, no solid and no derived value
+depends on a field here, and `test_printplan.py` asserts that every option
+leaves both halves volumetrically identical.
+
+| field | default | |
+|---|---|---|
+| `profile` | `balanced` | `slicer` writes no settings at all; `balanced` is 4 walls / 15 % gyroid; `lean` is 3 walls / 10 % |
+| `reinforce_clamps` | `true` | a dense column through the plate at each clamp. Sparse infill is not a bearing surface |
+| `support_forming_face` | `true` | a dense band under the plug's top face, and a sparser core beneath it |
+| `extrusion_width` | `null` | `null` derives it from `manufacturing.nozzle_diameter` × 1.125 |
+| `layer_height` | `null` | `null` derives it from `manufacturing.nozzle_diameter` × 0.5 |
+
+It is in the parameter document rather than beside the export request because an
+artifact's content depends on it, and a cache key is taken from the document.
+It is excluded from `api.NON_GEOMETRIC_FIELDS` for the opposite reason: two
+designs that differ only here are the same *design*, so changing an infill
+option must not rebuild a preview. See [`api.md`](api.md) §3MF for how those two
+facts live together.
+
+### 2.8 `manufacturing` and `quality`
 
 `manufacturing`: `pin_fit_clearance` (0.20), `min_wall` (2.0),
 `nozzle_diameter` (0.4). These are printer quantities and must never be confused
@@ -352,8 +374,8 @@ implemented; the rest are specified for the validation milestone.
 | `W-GAP-021` ✓ | warn | `forming_gap < 0.4` | below FDM resolution; the halves fuse |
 | `E-MOLD-040` ✓ | error | `cavity_plate_thickness < depth` | the plug protrudes |
 | `E-MOLD-041` ✓ | error | `female_flange_width < min_wall` | i.e. `flange_width − gap < min_wall` |
-| `E-FEAT-050` | error | clamp hole to cavity wall `< d/2 + min_wall` | hole breaks into the cavity |
-| `E-FEAT-051` | error | `inset < d/2 + min_wall` | hole breaks the plate edge |
+| `E-FEAT-050` ✓ | error | a corner feature's **signed distance to the cavity wall** `< min_wall`, measured against the plan curve | the bore or the rebate breaks into the forming wall. The boolean still returns one closed shell, so nothing downstream can see it. Covers clamp holes, alignment pins (over their fit clearance) and pry notches (over their inner edge); the diagnostic's `field` names which |
+| `E-FEAT-051` ✓ | error | `inset < d/2 + min_wall` | hole breaks the plate edge |
 | `E-FEAT-053` | error | a pry notch overlaps a clamp hole | the reference avoids this via opposite diagonals |
 | `W-FEAT-061` | warn | no pins and no holes in both halves | reproduces the reference's loose registration |
 | `W-MFG-071` | warn | estimated volume > 1500 cm³ | the reference male alone is 993.8 cm³ |

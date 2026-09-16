@@ -23,20 +23,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cadquery as cq  # noqa: E402
 
 from material import (  # noqa: E402
-    DENSITY, PLANS, area, face_breakdown, material, pair, printed,
-    section_stiffness, volume,
+    DENSITY, PLANS, area, face_breakdown, pair, printed, section_stiffness, volume,
 )
 from traymold.derive import derive, forming_gap  # noqa: E402
 from traymold.exporters import print_oriented  # noqa: E402
 from traymold.mold import (  # noqa: E402
-    ProfileFamily, _BaseCache, _at_z, _loft, _shells, build, make_base_profile,
+    ProfileFamily, _BaseCache, _at_z, _loft, build, make_base_profile,
 )
 from traymold.presets import REF_4X7  # noqa: E402
 
 
 def stand_down_e_mold_040() -> None:
     """Let the study build a female thinner than the draw depth."""
-    import traymold.validate                       # noqa: F401
+    import traymold.validate  # noqa: F401  (imported for the side effect below)
+
     sys.modules["traymold.validate"].raise_on_errors = lambda params: None
 
 
@@ -160,7 +160,7 @@ def regions() -> None:
         before = printed(female, PLANS[plan_name])
         after = printed(relieved, PLANS[plan_name])
         if plan_name == "6w/30%":
-            print(f"  counterbore relief, 10 mm forming land, 8 mm wide above it")
+            print("  counterbore relief, 10 mm forming land, 8 mm wide above it")
             print(f"    solid  {before['solid_cm3']:7.1f} -> {after['solid_cm3']:7.1f} cm3"
                   f"   ({after['solid_cm3'] - before['solid_cm3']:+.1f})")
             print(f"    shell  {before['shell_cm3']:7.1f} -> {after['shell_cm3']:7.1f} cm3"
@@ -218,21 +218,62 @@ def ledger() -> None:
 
 
 def bug() -> None:
-    print("\n== a clamp hole is never checked against the flange it sits in ==\n")
+    """Why the clamp-hole rule has to be geometric, and what it catches.
+
+    The obvious rule - compare the hole against the cavity's bounding box - is
+    wrong in both directions, and this is the evidence for both. On a rounded
+    profile the box is far too pessimistic, because the corner has curved away
+    from where the hole sits. On a profile with a small corner setback the hole
+    really does open into the forming wall, and the result is still one closed
+    shell, so `mold._checked` passes it and the volume bounds pass it too.
+    """
+    import json
+
+    from traymold.params import CircularRectProfile, G2QuinticRectProfile
+    from traymold.validate import _clearance, _polyline_for, validate
+
     gap = forming_gap(REF_4X7)
     ch = REF_4X7.features.clamp_holes
-    print(f"  {'flange':>7}{'hole x':>9}{'cavity x':>10}{'land':>8}   {'female':>9}  shells")
-    for fw in (30.0, 26.0, 24.0, 20.0):
-        p = mold(flange_width=fw)
-        d = derive(p)
-        hole_x = d.plate_length / 2 - ch.inset
-        cavity_x = p.tray.profile.length / 2 + gap
-        land = hole_x - ch.diameter / 2 - cavity_x
-        r = build(p)
-        total, closed = _shells(r.female)
-        note = "   <- bore opens into the cavity, and nothing says so" if land < 0 else ""
-        print(f"  {fw:>7.0f}{hole_x:>9.1f}{cavity_x:>10.1f}{land:>+8.1f}"
-              f"   {volume(r.female) / 1000:>7.1f} cm3  {total}/{closed}{note}")
+
+    def measure(params):
+        d = derive(params)
+        x, y = d.plate_length / 2 - ch.inset, d.plate_width / 2 - ch.inset
+        poly = _polyline_for(json.dumps(params.tray.profile.model_dump(mode="json"), sort_keys=True))
+        true_land = _clearance(poly, -x, y, forming_gap(params)) - ch.diameter / 2
+        bbox_land = params.mold.flange_width - ch.inset - ch.diameter / 2 - forming_gap(params)
+        # does the bore actually meet the cavity?
+        overlap = volume(
+            prism(params, 0.0, -1.0, params.mold.cavity_plate_thickness + 1.0,
+                  forming_gap(params)).intersect(
+                cq.Workplane("XY").workplane(offset=-1.0).center(-x, y)
+                  .circle(ch.diameter / 2).extrude(params.mold.cavity_plate_thickness + 2.0).val()
+            )
+        ) / 1000.0
+        codes = sorted({d_.code for d_ in validate(params) if d_.severity == "error"})
+        return bbox_land, true_land, overlap, codes
+
+    print("\n== the clamp-hole rule: a bounding box is not a plan curve ==\n")
+    print(f"  {'profile':<26}{'flange':>7}{'bbox':>8}{'true':>8}{'overlap':>11}   diagnostics")
+    cases = [
+        ("obround (reference)", mold()),
+        ("obround", mold(flange_width=20.0)),
+        ("obround", mold(flange_width=12.0)),
+        ("circular_rect r=25", mold(flange_width=12.0).model_copy(update={
+            "tray": REF_4X7.tray.model_copy(update={
+                "profile": CircularRectProfile(length=175.0, width=105.0, corner_radius=25.0)})})),
+        ("g2_quintic_rect s=10", mold(flange_width=12.0).model_copy(update={
+            "tray": REF_4X7.tray.model_copy(update={
+                "profile": G2QuinticRectProfile(length=175.0, width=105.0, corner_setback=10.0)})})),
+    ]
+    for label, params in cases:
+        bbox_land, true_land, overlap, codes = measure(params)
+        note = "   <- the bore is in the cavity" if overlap > 1e-6 else ""
+        print(f"  {label:<26}{params.mold.flange_width:>7.0f}{bbox_land:>+8.1f}{true_land:>+8.1f}"
+              f"{overlap:>8.2f} cm3   {','.join(codes) or 'clean'}{note}")
+    print("\n  bbox: flange - inset - radius - gap, the arithmetic rule."
+          "\n  true: signed distance to the cavity wall, which is what E-FEAT-050 measures."
+          "\n  A shell count cannot see any of this: every row above is one closed solid.")
+    _ = gap
 
 
 SECTIONS = {"baseline": baseline, "sections": sections, "levers": levers,

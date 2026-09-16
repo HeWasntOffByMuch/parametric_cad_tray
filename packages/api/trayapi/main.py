@@ -46,9 +46,9 @@ from .models import (
     ValidateResponse,
     VersionResponse,
 )
-from .policy import policy_diagnostics
+from .policy import features, format_diagnostics, policy_diagnostics
 from .request_errors import diagnostics_for, envelope, variant_tags
-from .ui_hints import UI_HINTS
+from .ui_hints import for_features as ui_hints_for
 from .version import API_VERSION
 from .worker import get_pool, shutdown_pool
 
@@ -163,12 +163,14 @@ def create_app(
 
     @app.get("/api/schema", response_model=SchemaResponse)
     def schema() -> SchemaResponse:
+        available = features()
         return SchemaResponse(
             schema_version=SCHEMA_VERSION,
             model_version=MODEL_VERSION,
             json_schema=json_schema(),
             defaults=defaults(),
-            ui_hints=UI_HINTS,
+            ui_hints=ui_hints_for(available),
+            features=available,
         )
 
     @app.get("/api/presets", response_model=list[PresetSummary])
@@ -391,7 +393,12 @@ def _submit(app: FastAPI, kind: str, request: BuildRequest, response: Response,
             client: str = "unknown", session_id: str | None = None) -> JobResponse:
     effective = _effective(request.model_copy(update={"quality": request.quality or kind}))
     result = core_validate(effective)
-    diagnostics = result.diagnostics + policy_diagnostics(effective, request.allow_experimental)
+    diagnostics = (result.diagnostics
+                   + policy_diagnostics(effective, request.allow_experimental)
+                   # Refused here rather than only hidden in the browser: this API
+                   # is public and a caller that is not the form can ask for
+                   # anything.
+                   + format_diagnostics(request.formats, features()))
     if any(d["severity"] == "error" for d in diagnostics):
         # invalid parameters never reach a worker
         raise HTTPException(status_code=422, detail={
@@ -483,6 +490,7 @@ def _job_response(job: Job) -> JobResponse:
         derived=report.get("derived", {}),
         volumes_cm3=report.get("volumes_cm3", {}),
         timings=report.get("timings", {}),
+        print_ledger=report.get("print_ledger", {}),
         error=job.error.as_dict() if job.error else None,
     )
 
@@ -490,6 +498,7 @@ def _job_response(job: Job) -> JobResponse:
 def _media_type(path: Path) -> str:
     return {
         ".glb": "model/gltf-binary",
+        ".3mf": "model/3mf",
         ".stl": "model/stl",
         ".step": "application/step",
         ".json": "application/json",

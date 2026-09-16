@@ -71,6 +71,13 @@
           "plate_edge_chamfer": 0.0
         },
         "name": "ref-4x7-wetmold",
+        "print": {
+          "extrusion_width": null,
+          "layer_height": null,
+          "profile": "balanced",
+          "reinforce_clamps": true,
+          "support_forming_face": true
+        },
         "quality": {
           "angular_deflection": null,
           "blend_sections": null,
@@ -78,7 +85,7 @@
           "max_section_sagitta": null,
           "mode": "export"
         },
-        "schema_version": "2.0.0",
+        "schema_version": "2.1.0",
         "tray": {
           "datum": "inner",
           "depth": 25.0,
@@ -164,6 +171,13 @@
           "plate_edge_chamfer": 0.0
         },
         "name": "ref-4x7-step",
+        "print": {
+          "extrusion_width": null,
+          "layer_height": null,
+          "profile": "balanced",
+          "reinforce_clamps": true,
+          "support_forming_face": true
+        },
         "quality": {
           "angular_deflection": null,
           "blend_sections": null,
@@ -171,7 +185,7 @@
           "max_section_sagitta": null,
           "mode": "export"
         },
-        "schema_version": "2.0.0",
+        "schema_version": "2.1.0",
         "tray": {
           "datum": "inner",
           "depth": 25.0,
@@ -256,6 +270,13 @@
         "plate_edge_chamfer": 0.0
       },
       "name": "untitled",
+      "print": {
+        "extrusion_width": null,
+        "layer_height": null,
+        "profile": "balanced",
+        "reinforce_clamps": true,
+        "support_forming_face": true
+      },
       "quality": {
         "angular_deflection": null,
         "blend_sections": null,
@@ -263,7 +284,7 @@
         "max_section_sagitta": null,
         "mode": "export"
       },
-      "schema_version": "2.0.0",
+      "schema_version": "2.1.0",
       "tray": {
         "datum": "inner",
         "depth": 25.0,
@@ -275,6 +296,9 @@
           "width": 105.0
         }
       }
+    },
+    "features": {
+      "3mf": false
     },
     "json_schema": {
       "$defs": {
@@ -1005,6 +1029,62 @@
           "title": "PartSelection",
           "type": "object"
         },
+        "PrintParams": {
+          "additionalProperties": false,
+          "description": "How the solids should be *printed*.  Read by the 3MF export and by\nnothing else: no geometry, no profile and no derived value depends on any\nfield here, and `test_dependency_boundary.py` asserts it.\n\nIt lives in the parameter document rather than beside the export request\nbecause an artifact's content depends on it - two designs that differ only\nhere are two different files, and the cache key is taken from the document.",
+          "properties": {
+            "extrusion_width": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 4.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Extrusion Width"
+            },
+            "layer_height": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 1.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Layer Height"
+            },
+            "profile": {
+              "default": "balanced",
+              "enum": [
+                "slicer",
+                "balanced",
+                "lean"
+              ],
+              "title": "Profile",
+              "type": "string"
+            },
+            "reinforce_clamps": {
+              "default": true,
+              "title": "Reinforce Clamps",
+              "type": "boolean"
+            },
+            "support_forming_face": {
+              "default": true,
+              "title": "Support Forming Face",
+              "type": "boolean"
+            }
+          },
+          "title": "PrintParams",
+          "type": "object"
+        },
         "PryNotches": {
           "additionalProperties": false,
           "properties": {
@@ -1340,6 +1420,16 @@
           "title": "Name",
           "type": "string"
         },
+        "print": {
+          "$ref": "#/$defs/PrintParams",
+          "default": {
+            "extrusion_width": null,
+            "layer_height": null,
+            "profile": "balanced",
+            "reinforce_clamps": true,
+            "support_forming_face": true
+          }
+        },
         "quality": {
           "$ref": "#/$defs/QualityParams",
           "default": {
@@ -1351,7 +1441,7 @@
           }
         },
         "schema_version": {
-          "default": "2.0.0",
+          "default": "2.1.0",
           "title": "Schema Version",
           "type": "string"
         },
@@ -1374,7 +1464,7 @@
       "type": "object"
     },
     "model_version": "0.4.0",
-    "schema_version": "2.0.0",
+    "schema_version": "2.1.0",
     "ui_hints": {
       "conflicts": [
         {
@@ -1484,6 +1574,7 @@
           "unit": "mm"
         },
         "manufacturing.nozzle_diameter": {
+          "note": "Sets the default extrusion width and layer height for the 3MF export.",
           "step": 0.1,
           "unit": "mm"
         },
@@ -1524,6 +1615,23 @@
           "step": 0.5,
           "unimplemented": true,
           "unit": "mm"
+        },
+        "print.extrusion_width": {
+          "step": 0.05,
+          "unit": "mm"
+        },
+        "print.layer_height": {
+          "step": 0.05,
+          "unit": "mm"
+        },
+        "print.profile": {
+          "note": "How much infill, and where. `lean` empties the core and puts density back only under the clamps and the plug's forming face; `slicer` writes no settings at all and leaves your own preset alone."
+        },
+        "print.reinforce_clamps": {
+          "note": "A clamp puts a concentrated load through the plate. Sparse infill is not a bearing surface."
+        },
+        "print.support_forming_face": {
+          "note": "Top solid layers over a sparse lattice dimple, and the plug's top face is a forming surface."
         },
         "tray.datum": {
           "disabled_values": {
@@ -1669,7 +1777,13 @@
       ],
       "hidden": [
         "schema_version",
-        "name"
+        "name",
+        "print.profile",
+        "print.reinforce_clamps",
+        "print.support_forming_face",
+        "print.extrusion_width",
+        "print.layer_height",
+        "print"
       ]
     }
   }

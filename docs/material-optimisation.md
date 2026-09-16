@@ -4,6 +4,9 @@ Every number here is produced by [`tools/print_study`](../tools/print_study/),
 on the `ref-4x7` preset at export quality, and can be reproduced with
 `python3 tools/print_study/study.py`.
 
+§5 and §6 have since been built; see §7 for what shipped and what the numbers
+came out at.
+
 ---
 
 ## The short answer
@@ -284,133 +287,202 @@ going below 26.
 
 ---
 
-## 5. 3MF with print settings: what it would take
+## 5. 3MF with print settings: what it took
 
-**Effort: roughly 3 days, ~800 lines with tests, and it touches nothing that
-builds geometry.** `docs/api.md` already calls 3MF "a self-contained addition to
-`exporters.write_artifacts`", and that is accurate.
-[`tools/print_study/threemf_prototype.py`](../tools/print_study/threemf_prototype.py)
-is a working one — 90 lines of writer and a 60-line sketch of the solver — and
-it writes the reference pair with modifiers today:
+**Estimated at ~3 days and ~800 lines; landed at 787 lines of new source across
+four files, 688 of tests, and about 950 changed lines everywhere else — and it
+touches nothing that builds geometry.**
+`docs/api.md` called 3MF "a self-contained addition to
+`exporters.write_artifacts`", and that was accurate.
 
 ```
-3D/3dmodel.model                  24,552,072 ->  4,310,758
-Metadata/Slic3r_PE_model.config        1,953 ->        360
-TOTAL                                             4,311,500 bytes
-object male:   male (ModelPart, 208,880 tri), forming-face-backing (ParameterModifier, 12 tri)
-object female: female (ModelPart, 137,102 tri), clamp-a, clamp-b (ParameterModifier, 1,004 tri each)
+3D/3dmodel.model                  23,893,985 ->  4,057,003
+Metadata/Slic3r_PE_model.config        3,932 ->        436
+TOTAL                                             4,057,836 bytes
+object male:   male (ModelPart), forming-face-support, plug-core, clamp-bearing-0/1
+object female: female (ModelPart), clamp-bearing-0/1
 ```
 
-Note the size: **4.1 MB against 16.5 MB for the STL pair**, a 4× reduction, from
-the zip alone. That is worth having even with no settings in it — it is
-bandwidth off every export and off the artifact cache.
+**4.06 MB against 16.5 MB for the STL pair**, a 4× reduction from the zip alone.
+That is worth having even with no settings in it — it is bandwidth off every
+export and off the artifact cache.
 
-### What makes it tractable
+### What made it tractable
 
 The format carries a modifier as a *volume* inside an object: all volumes'
 triangles concatenate into one mesh, and `Metadata/Slic3r_PE_model.config` names
 each volume by its triangle range plus a `volume_type` of `ModelPart` or
 `ParameterModifier`, with its own settings. That is it. No lib3mf, no trimesh —
 `zipfile` and `xml.etree`, both stdlib, over `Shape.tessellate`, which the STL
-exporter already calls.
+exporter already calls. (CadQuery 2.8 ships `ExportTypes.THREEMF`; it writes
+mesh only, with no `Metadata/` at all, so it cannot carry a modifier.)
 
-**Emit per-object and per-volume overrides only; never a global profile.**
+**Per-object and per-volume overrides only; never a global profile.**
 `Metadata/Slic3r_PE.config` — the full print profile — is hundreds of keys,
-differs by slicer version and printer, and would stamp on whatever preset the
+differs by slicer version and printer, and would replace whatever preset the
 user has tuned. Overrides merge onto their own preset instead. This is both far
-less code and the behaviour someone actually wants, and it is what makes the
-export version-tolerant. PrusaSlicer, SuperSlicer and Orca all read this layout;
-Bambu Studio's native flavour (`Metadata/model_settings.config`, per-object mesh
-files) would be a second emitter of maybe 150 lines if it is ever wanted.
+less code and the behaviour someone wants, and it is what makes the export
+version-tolerant: nothing in the file names a printer. A modifier also writes
+only what it *changes* from its object, so a reader never sees a restated
+perimeter count that looks like a deliberate override.
 
-Key names differ between families — `fill_density` / `perimeters` /
-`top_solid_layers` in PrusaSlicer against `sparse_infill_density` / `wall_loops`
-/ `top_shell_layers` in Orca. That is a dictionary, not a research project.
+PrusaSlicer, SuperSlicer and Orca all read this layout. Bambu Studio's native
+flavour (`Metadata/model_settings.config`, per-object mesh files) would be a
+second emitter of maybe 150 lines if it is ever wanted; key names differ between
+families — `fill_density` / `perimeters` / `top_solid_layers` against
+`sparse_infill_density` / `wall_loops` / `top_shell_layers` — which is a
+dictionary, not a research project.
 
-### Shape of the work
+### What it is made of
 
 | | |
 |---|---|
-| `traymold/threemf.py` | the writer: objects, volumes, triangle spans, the two config flavours. ~200 lines |
-| `traymold/printplan.py` | **the solver**: `params -> [Region(solid, settings)]`. ~250 lines |
-| `exporters.write_artifacts` | a `"3mf"` branch beside `"stl"`. ~30 lines |
-| `api.Format`, `models.BuildRequest.formats`, `ExportPanel` | add `"3mf"` to three literals and one checkbox list |
-| tests | zip structure, triangle spans consistent with the mesh, each region non-empty after intersection with its part, and every region inside the part's bounding box |
+| `traymold/printplan.py` | **the solver**: `params → Region(solid, settings)`, plus the material model and the ledger |
+| `traymold/threemf.py` | the writer: objects, volumes, triangle spans, the setting map |
+| `exporters.write_artifacts` | a `"3mf"` branch beside `"stl"`, and `params` threaded to it |
+| `params.PrintParams` | `profile`, the two region toggles, and the widths |
+| `trayapi.policy` / `settings` / `ui_hints` | the flag, the refusal and the hidden group |
 
 The solver is the interesting part and it is also the safe part. Every region is
 a **primitive** — a cylinder at a clamp point, a prism between two offsets of the
-base profile, a box under the forming face — positioned from values `derive()`
+base profile, a band under the forming face — positioned from values `derive()`
 already computes. It runs no booleans against the part, so none of the
-fragility in `architecture.md` §7.8a is in reach: a bad region is a region that
-does nothing, not a build that fails. `manufacturing.nozzle_diameter` is
-already in the schema and read by nothing at all — extrusion width is the one
-thing a print solver cannot do without, so this is the job it was waiting for.
+fragility in `architecture.md` §7.8a is in reach: a bad region is a region the
+slicer ignores, never a build that fails. That is also why
+`test_printplan.py` asserts every region really does intersect its part, and by
+more than a graze — nothing else would notice.
+
+`manufacturing.nozzle_diameter` was in the schema and read by nothing at all
+before this. Extrusion width is the one thing a print solver cannot do without,
+so this is the job it was waiting for.
 
 ### The one trap
 
-`print_oriented` turns the female over on the way to the bed, and a rotation
-about X maps (x, y, z) → (x, −y, −z). A modifier built in assembly coordinates
-is **not** turned over with it:
+`print_oriented` turns the female over, and a rotation about X maps
+(x, y, z) → (x, −y, −z). A modifier built in assembly coordinates is **not**
+turned over with it:
 
 ```
-clamp-NW modifier centre   assembly (-102.5, +67.5)   after print_oriented (-102.5, -67.5)
+clamp region centre   assembly (-102.5, +67.5)   after print_oriented (-102.5, -67.5)
 ```
 
 Build a clamp column at the assembly-frame bore and it lands on the opposite
 diagonal of the printed part, reinforcing solid plastic while the real bore sits
-in 10 % lattice. This is the same chirality that `architecture.md` §7.10 warns
-about for features, and it wants the same treatment: every region goes through
-`print_oriented` with the part it belongs to, and a test that reads the diagonal
-off the geometry rather than off the transform.
+in 10 % lattice. `PrintPlan.oriented(print_oriented)` is the only supported way
+to move a plan, and `test_threemf.py` reads the result off the geometry rather
+than off the transform: it probes a column down each region's axis and asserts
+the oriented one finds the through bore while the unturned one finds unbored
+plate.
 
 ---
 
-## 6. A bug found on the way
+## 6. A bug found on the way — and the rule it needed
 
-There is no rule relating `features.clamp_holes` to the flange it has to sit in.
-The hole is placed at `plate/2 − inset` and the cavity ends at
-`profile/2 + forming_gap`; nothing checks that the first clears the second.
-
-```
-flange  hole x  cavity x    land      female  shells
-    30   102.5      90.5     +9.0    512.4 cm3   1/1
-    26    98.5      90.5     +5.0    434.0 cm3   1/1
-    24    96.5      90.5     +3.0    396.0 cm3   1/1
-    20    92.5      90.5     -1.0    322.4 cm3   1/1   <- bore opens into the cavity
-```
-
-At `flange_width` 20 with the default inset and Ø6 the bore breaks through into
-the cavity. The result is still a single closed shell, so `_checked` passes it,
-the volume bound passes it, and the user gets a mold with a slot in the forming
-wall and no diagnostic. It wants a rule in the same family as `E-MOLD-041`:
+**An earlier draft of this section had this wrong, and the correction is the
+interesting part.** The claim was that at `flange_width` 20 the clamp bore opens
+into the cavity, on the arithmetic that the hole sits at `plate/2 − inset` and
+the cavity ends at `profile/2 + gap`. That arithmetic compares the hole against
+the cavity's **bounding box**, and a corner feature is exactly where a bounding
+box stops describing a rounded plan curve:
 
 ```
-E-FEAT-0xx  plate_length/2 - inset - diameter/2 - (length/2 + gap) < min_wall
+profile                  flange    bbox    true    overlap   diagnostics
+obround (reference)          30    +9.0   +33.8    0.00 cm3   clean
+obround                      20    -1.0   +19.6    0.00 cm3   clean
+obround                      12    -9.0    +8.3    0.00 cm3   clean
+circular_rect r=25           12    -9.0    +0.1    0.00 cm3   E-FEAT-050
+g2_quintic_rect s=10         12    -9.0    -6.7    0.76 cm3   E-FEAT-050
 ```
 
-checked on both axes, for clamp holes and alignment pins alike. This matters
-more once `flange_width` becomes a material lever (§4).
+On the reference obround the box is **25 mm pessimistic**: the clamp sits
+diagonally outboard, where the corner has already curved away, and the bore is
+nowhere near the cavity at any flange the schema allows. An arithmetic rule
+would have rejected a mold that builds perfectly.
+
+The bug is real on a profile whose corners do *not* curve away. A
+`g2_quintic_rect` with a 10 mm setback at `flange_width` 12 puts the whole bore
+inside the forming wall — 0.76 cm³ of it, the bore's entire volume — and a
+`circular_rect` at r=25 leaves **0.11 mm** of plastic between them. Both built
+clean before this change: the cut still returns one closed shell, so
+`mold._checked` passes it, the volume bounds pass it, and the user gets a mold
+with a slot in the forming wall and no diagnostic anywhere.
+
+**Fixed.** `E-FEAT-050` (to the cavity wall) and `E-FEAT-051` (to the plate
+edge) now check every corner feature — clamp holes, alignment pins over their
+fit clearance, and pry notches over their inner edge. All three are placed by
+the same helper and all three fail the same way, so the code names the condition
+and the diagnostic's `field` names the feature. Both codes were already reserved
+in `parameter-model.md` §5.4 for exactly this.
+
+The rule is geometric and still costs nothing on a keystroke, because the cavity
+is `offset(base, gap)` and every plan curve in this schema is convex. For a
+convex curve an outward offset moves every boundary point by `gap` along its own
+normal, so
+
+```
+distance(point, cavity)  ==  distance(point, base_profile) − gap
+```
+
+identically — which is the same fact `derive` records as an infinite
+`max_outward_offset`. So the rule measures against a cached polyline of the base
+profile and subtracts, with no kernel call at all. `test_validation.py` checks
+that identity against a real OCC offset on three profile families, and asserts
+the reference's own 33.8 mm of land so a change to either shows up in a test
+rather than in a mold.
 
 ---
 
-## 7. Recommended order
+## 7. What shipped, and what is left
 
-1. **Change the slicer settings. Nothing else.** 3 perimeters, 10 % gyroid,
-   5 bottom / 6 top. 796 g → 418 g, today, with no code and no rebuild. Then
-   clamp through a wide washer, or hand-place two high-density modifiers, until
-   (2) lands and places them for you.
-2. **The 3MF export with a print solver.** ~3 days, additive, no B-rep risk,
-   and it turns (1) into something the app ships rather than something a user
-   has to know. Ships the −44 % as a default, plus 4× smaller artifacts.
-3. **The clamp-hole clearance rule.** Half a day. Independent of everything
-   else, and a prerequisite for letting anyone pull `flange_width` down.
-4. **The profile-following plate outline.** A further −10 %, holds up at low
-   infill, and improves how the mold looks. Real geometry work on the fragile
-   path — schedule it on its own.
-5. **Leave `cavity_plate_thickness` alone**, and re-open it as
+**Done — the 3MF export with a print solver.** `traymold/printplan.py` resolves
+`params → regions`, `traymold/threemf.py` writes the project file, and the
+export panel reports the ledger. Three infill options, measured on the reference
+with `lean` selected:
+
+| option | filament | vs 6 perimeters / 30 % |
+|---|---:|---:|
+| 6 perimeters, 30 % infill *(what the brief starts from)* | 796 g | — |
+| `balanced` — 4 walls, 15 % gyroid | 524 g | −34 % |
+| **`lean` — 3 walls, 10 % gyroid** | **448 g** | **−44 %** |
+| `slicer` — writes no settings at all | — | your own preset decides |
+
+and the regions that put density back where §3 says it is needed:
+
+```
+male    forming-face-support   82.9 cm3   10% -> 35%   +20.7
+male    plug-core             276.0 cm3   10% ->  7%    -8.3
+male    clamp-bearing-0/1       7.6 cm3   10% -> 70%    +4.6
+female  clamp-bearing-0/1      12.7 cm3   10% -> 70%    +7.6
+```
+
+The file is **4.06 MB against 16.5 MB for the STL pair**. It is behind a flag:
+`TRAYAPI_ENABLE_3MF=1` on the server, and `?flags=3mf` or ctrl/cmd + shift + `.`
+in the browser. Both have to agree — the browser hides a control it would only
+be refused for using, and the server refuses the format whatever the browser
+does.
+
+Two things are worth knowing about how it is wired. `params.print` is excluded
+from `params_hash`, so choosing an infill option never rebuilds geometry that
+could not show it; the API's `cache_key` adds it back for the one format whose
+bytes depend on it. And every region goes through `print_oriented` with its
+part — `PrintPlan.oriented` — because a rotation about X maps (x, y, z) →
+(x, −y, −z) and a clamp region left in assembly coordinates reinforces the
+opposite diagonal.
+
+**Done — the corner-feature clearance rules.** §6.
+
+**Still open, in order:**
+
+1. **The profile-following plate outline.** A further −10 %, holds up at low
+   infill (§4), and improves how the mold looks. Real geometry work on the
+   fragile boolean path — schedule it on its own.
+2. **Leave `cavity_plate_thickness` alone**, and re-open it as
    `cavity_engagement_depth` only if forming trials show the cavity wall does
    not need to guide the full draw. That is a forming question; on material it
    loses either way, and §2 is why.
+3. **A coupon test for the clamp-bearing numbers** in §3. The reinforcement is
+   worth doing whichever way it lands, but the table there is a sizing estimate
+   and should not stay one forever.
 
 Not recommended: relief counterbores, CAD rib grids, and any pocket whose
 purpose is to remove core that 10 % infill has already removed.

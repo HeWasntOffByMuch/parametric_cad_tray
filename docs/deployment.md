@@ -353,6 +353,7 @@ long-lived registry credential is stored on the host.
 | `TRAYMOLD_API_BIND` | defaults to `127.0.0.1:8000`; change the port if something else on the host has it | api |
 | `TRAYMOLD_PROXY_NETWORK` | the docker network an existing containerised proxy is on; joins the API to it as `traymold-api` | api |
 | `TRAYMOLD_ANALYTICS_DB` | leave unset for the default path in the `traymold_analytics` volume; `off` disables analytics — see [`analytics.md`](analytics.md) | api |
+| `TRAYAPI_ENABLE_3MF` | `1` to offer the 3MF export; defaults to `0`. It roughly doubles an export's emit time, so a small VPS should leave it off — see [`frontend.md`](frontend.md) §6b | api |
 | `TRAYMOLD_API_BASE_URL` | only if the API is not plain https on `TRAYMOLD_API_DOMAIN` | pages |
 | `TRAYMOLD_MODEL_URL` | the model listing page linked in the header, e.g. a MakerWorld model; unset hides the link | pages |
 

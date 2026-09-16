@@ -1,9 +1,9 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api } from '../api/client'
 import { followJob } from '../api/jobStream'
 import { withSession } from '../analytics'
 import { apiUrl } from '../config'
-import type { Job, Json } from '../api/types'
+import type { Job, Json, PrintLedger } from '../api/types'
 
 type Parts = 'both' | 'male' | 'female'
 
@@ -19,13 +19,83 @@ function fileSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} kB`
 }
 
+function hasLedger(value: Job['print_ledger']): value is PrintLedger {
+  return Boolean(value && 'options' in value && (value as PrintLedger).options?.length)
+}
+
+/**
+ * What each infill option costs, on this design.
+ *
+ * Every row is the *same geometry* priced differently - these options change
+ * the print, never the part - which is why they can sit next to each other at
+ * all. The option that writes no settings has no number, because what it costs
+ * is whatever preset the reader has loaded.
+ */
+function PrintLedgerTable({ ledger }: { ledger: PrintLedger }) {
+  return (
+    <div className="ledger" data-testid="print-ledger">
+      <table>
+        <thead>
+          <tr>
+            <th>Infill plan</th>
+            <th>Filament</th>
+            <th>vs {ledger.assumptions.reference}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ledger.options.map((row) => (
+            <tr key={row.option} className={row.selected ? 'selected' : row.reference ? 'reference' : undefined}>
+              <th scope="row">
+                {row.option}
+                {row.selected && <span className="badge">in this file</span>}
+              </th>
+              <td>{row.grams === null ? '—' : `${row.grams} g`}</td>
+              <td>{row.vs_reference_pct === null ? (row.note ?? '—') : `${row.vs_reference_pct > 0 ? '+' : ''}${row.vs_reference_pct}%`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {ledger.regions.length > 0 && (
+        <details>
+          <summary>Where the density goes back in</summary>
+          <ul>
+            {ledger.regions.map((region) => (
+              <li key={`${region.part}-${region.name}`}>
+                <strong>
+                  {region.part} {region.name}
+                </strong>{' '}
+                {region.cm3} cm³ at {Math.round(region.to_density * 100)}% instead of{' '}
+                {Math.round(region.from_density * 100)}%, {region.delta_cm3 > 0 ? '+' : ''}
+                {region.delta_cm3} cm³ — {region.why}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <p className="hint">{ledger.assumptions.accuracy}.</p>
+    </div>
+  )
+}
+
 /**
  * Export uses the same asynchronous job model as preview, and is completely
  * independent of it: requesting an export never regenerates the preview, and a
  * preview in flight does not block an export. Artifacts appear only once the
  * job completes.
  */
-export function ExportPanel({ params, disabled, allowExperimental }: { params: Json; disabled: boolean; allowExperimental: boolean }) {
+export function ExportPanel({
+  params,
+  disabled,
+  allowExperimental,
+  offer3mf = false,
+}: {
+  params: Json
+  disabled: boolean
+  allowExperimental: boolean
+  /** The 3MF export is gated per deployment and revealed by a hidden switch;
+   *  see `flags.ts`. Offering it when either says no would only earn a 422. */
+  offer3mf?: boolean
+}) {
   const [parts, setParts] = useState<Parts>('both')
   const [formats, setFormats] = useState<string[]>(['step', 'stl'])
   const [job, setJob] = useState<Job | null>(null)
@@ -70,6 +140,13 @@ export function ExportPanel({ params, disabled, allowExperimental }: { params: J
   const toggleFormat = (name: string) =>
     setFormats((current) => (current.includes(name) ? current.filter((f) => f !== name) : [...current, name]))
 
+  // A switch turned back off, or a deployment that stopped offering the format,
+  // must not leave it selected: the request would be refused and the user would
+  // have no control to un-tick.
+  useEffect(() => {
+    if (!offer3mf) setFormats((current) => (current.includes('3mf') ? current.filter((f) => f !== '3mf') : current))
+  }, [offer3mf])
+
   const artifacts = job?.state === 'complete' ? Object.values(job.artifacts) : []
 
   return (
@@ -87,7 +164,7 @@ export function ExportPanel({ params, disabled, allowExperimental }: { params: J
         <fieldset className="formats">
           <legend>Formats</legend>
           <div className="format-options">
-            {['step', 'stl'].map((name) => (
+            {(offer3mf ? ['step', 'stl', '3mf'] : ['step', 'stl']).map((name) => (
               <label key={name} className="checkbox">
                 <input
                   type="checkbox"
@@ -142,6 +219,9 @@ export function ExportPanel({ params, disabled, allowExperimental }: { params: J
         <p className="hint" data-testid="export-orientation">
           Print-oriented: each half is already flat-side-down on the bed.
         </p>
+      )}
+      {job?.state === 'complete' && hasLedger(job.print_ledger) && (
+        <PrintLedgerTable ledger={job.print_ledger} />
       )}
       {job?.cached && job.state === 'complete' && <p className="hint">served from cache</p>}
     </section>

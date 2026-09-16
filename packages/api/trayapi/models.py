@@ -35,8 +35,10 @@ class BuildRequest(ValidateRequest):
     #: Opaque anonymous session id from the browser, used only to attribute this
     #: build to a funnel. Optional, bounded, and never required for a build.
     session_id: str | None = Field(default=None, max_length=64)
-    formats: list[Literal["glb", "step", "stl"]] | None = Field(
-        default=None, description="defaults per endpoint: preview -> glb, export -> step+stl"
+    formats: list[Literal["glb", "step", "stl", "3mf"]] | None = Field(
+        default=None,
+        description="defaults per endpoint: preview -> glb, export -> step+stl. "
+                    "3mf carries print settings and is gated per deployment",
     )
 
 
@@ -84,6 +86,9 @@ class JobResponse(BaseModel):
     derived: dict[str, Any] = Field(default_factory=dict)
     volumes_cm3: dict[str, float] = Field(default_factory=dict)
     timings: dict[str, float] = Field(default_factory=dict)
+    #: What the chosen infill plan costs and what the alternatives cost. Present
+    #: only on an export that wrote a 3MF; see traymold.printplan.ledger.
+    print_ledger: dict[str, Any] = Field(default_factory=dict)
     error: dict[str, Any] | None = None
 
 
@@ -137,6 +142,9 @@ class SchemaResponse(BaseModel):
     json_schema: dict[str, Any]
     defaults: dict[str, Any]
     ui_hints: dict[str, Any]
+    #: Gated capabilities this deployment offers, by name. The browser hides a
+    #: control it would only be refused for using; the server refuses it anyway.
+    features: dict[str, bool] = Field(default_factory=dict)
 
 
 class PresetSummary(BaseModel):

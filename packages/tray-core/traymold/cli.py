@@ -37,6 +37,11 @@ def main(argv=None) -> int:
         p.add_argument("--quality", choices=("preview", "export"), default=None)
         if name == "build":
             p.add_argument("-o", "--outdir", default="out")
+            p.add_argument("-f", "--format", dest="formats", action="append",
+                           choices=("step", "stl", "glb", "3mf"),
+                           help="repeatable; default step and stl")
+            p.add_argument("--print-profile", choices=("slicer", "balanced", "lean"),
+                           help="infill plan written into a 3mf; overrides params")
 
     sub.add_parser("schema")
     sub.add_parser("presets")
@@ -56,6 +61,9 @@ def main(argv=None) -> int:
     params = _load(args)
     if getattr(args, "quality", None):
         params = params.with_quality(args.quality)
+    if getattr(args, "print_profile", None):
+        params = params.model_copy(update={
+            "print": params.print.model_copy(update={"profile": args.print_profile})})
     if args.cmd == "validate":
         from .validate import validate
 
@@ -71,8 +79,9 @@ def main(argv=None) -> int:
     t0 = time.time()
     result = api_build(params)
     elapsed = time.time() - t0
-    written = export_all(result, args.outdir, params)
-    print(json.dumps({
+    formats = tuple(args.formats or ("step", "stl"))
+    written = export_all(result, args.outdir, params, formats)
+    out = {
         "name": params.name,
         "seconds": round(elapsed, 2),
         "quality": params.quality.mode,
@@ -80,7 +89,12 @@ def main(argv=None) -> int:
         "stats": result.stats,
         "derived": result.derived,
         "written": {k: str(v) for k, v in written.items()},
-    }, indent=2))
+    }
+    if "3mf" in formats:
+        from .printplan import ledger, resolve as resolve_plan
+
+        out["print_ledger"] = ledger(result, resolve_plan(params), params)
+    print(json.dumps(out, indent=2))
     return 0
 
 

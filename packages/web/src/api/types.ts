@@ -30,11 +30,48 @@ export type JobState = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled
 
 export interface Artifact {
   name: string
-  format: 'glb' | 'step' | 'stl'
+  format: 'glb' | 'step' | 'stl' | '3mf'
   part: 'male' | 'female' | 'assembly'
   bytes: number
   sha256: string
   url: string
+}
+
+/**
+ * What the chosen infill plan costs, and what the alternatives cost. Present
+ * only on an export that wrote a 3MF. `cm3` and `grams` are null for the option
+ * that writes no settings at all: what that costs is whatever preset the user
+ * has loaded, and the backend will not invent a number about someone else's
+ * printer.
+ */
+export interface PrintLedger {
+  profile: string
+  assumptions: {
+    extrusion_width: number
+    layer_height: number
+    filament_density_g_cm3: number
+    reference: string
+    accuracy: string
+  }
+  options: {
+    option: string
+    reference: boolean
+    selected: boolean
+    cm3: number | null
+    grams: number | null
+    vs_reference_pct: number | null
+    note?: string
+  }[]
+  regions: {
+    part: string
+    name: string
+    cm3: number
+    from_density: number
+    to_density: number
+    delta_cm3: number
+    why: string
+  }[]
+  solid_cm3: Record<string, number>
 }
 
 export interface Job {
@@ -55,6 +92,7 @@ export interface Job {
   derived: Record<string, number | string | null>
   volumes_cm3: Record<string, number>
   timings: Record<string, number>
+  print_ledger: PrintLedger | Record<string, never>
   error: { kind: string; message: string; diagnostics: Diagnostic[] } | null
 }
 
@@ -92,6 +130,9 @@ export interface SchemaResponse {
   json_schema: Json
   defaults: Json
   ui_hints: UiHints
+  /** Gated capabilities this deployment offers. A hidden switch can reveal a
+   *  control only where the matching key here is true. */
+  features?: Record<string, boolean>
 }
 
 export interface Preset {

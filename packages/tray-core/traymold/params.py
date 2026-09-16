@@ -348,6 +348,32 @@ class ManufacturingParams(_Model):
     nozzle_diameter: float = Field(default=0.4, gt=0, le=2.0)
 
 
+class PrintParams(_Model):
+    """How the solids should be *printed*.  Read by the 3MF export and by
+    nothing else: no geometry, no profile and no derived value depends on any
+    field here, and `test_dependency_boundary.py` asserts it.
+
+    It lives in the parameter document rather than beside the export request
+    because an artifact's content depends on it - two designs that differ only
+    here are two different files, and the cache key is taken from the document.
+    """
+
+    #: Which infill plan to write into the 3MF.  `slicer` emits the mesh with no
+    #: overrides at all, leaving whatever preset the user has tuned alone.
+    profile: Literal["slicer", "balanced", "lean"] = "balanced"
+    #: Extruded track width and layer height.  `None` derives them from
+    #: `manufacturing.nozzle_diameter`, which is the only thing that knows how
+    #: wide a line actually is.
+    extrusion_width: float | None = Field(default=None, gt=0, le=4.0)
+    layer_height: float | None = Field(default=None, gt=0, le=1.0)
+    #: A clamp puts a concentrated load through the plate; 10 % infill is not a
+    #: bearing surface.  Off only if the mold is never clamped.
+    reinforce_clamps: bool = True
+    #: The plug's top face is a forming surface spanning the whole plan, and top
+    #: solid layers over a sparse lattice dimple.
+    support_forming_face: bool = True
+
+
 class QualityParams(_Model):
     """Preview and export describe the same geometry; they differ only in loft
     section density and tessellation tolerance.  Leave the overrides at None to
@@ -371,6 +397,7 @@ class Params(_Model):
     mold: MoldParams = MoldParams()
     features: Features = Features()
     manufacturing: ManufacturingParams = ManufacturingParams()
+    print: PrintParams = PrintParams()
     quality: QualityParams = QualityParams()
 
     def with_quality(self, mode: str) -> "Params":

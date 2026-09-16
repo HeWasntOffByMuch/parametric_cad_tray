@@ -1,6 +1,10 @@
 """Version identifiers that participate in cache keys and export metadata."""
 
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "2.1.0"
+# 2.1.0  added `print`, the settings the 3MF export writes into the file. Purely
+#        additive and fully defaulted, so an older document still validates - and
+#        it is excluded from `api.NON_GEOMETRIC_FIELDS`, so it cannot move a
+#        surface or invalidate a preview.
 # Bump whenever the geometry produced for unchanged parameters changes.
 #
 # 0.3.0  preview max_section_sagitta 0.05 -> 0.20. The quality defaults resolve

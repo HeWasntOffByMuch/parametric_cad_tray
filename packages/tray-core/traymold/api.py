@@ -38,11 +38,16 @@ from .validate import Diagnostic, validate as _validate
 from .version import MODEL_VERSION, SCHEMA_VERSION, kernel_versions
 
 Quality_ = Literal["preview", "export"]
-Format = Literal["glb", "step", "stl"]
+Format = Literal["glb", "step", "stl", "3mf"]
 
-#: Fields that name or describe a design without changing its geometry.  Excluded
-#: from the hash so two users who type different names share one build.
-NON_GEOMETRIC_FIELDS = ("name",)
+#: Fields that cannot move a surface.  Excluded from the hash, so two users who
+#: type different names share one build - and so choosing a different infill plan
+#: does not rebuild geometry that cannot see it.
+#:
+#: `print` is excluded here and added back by the API's `cache_key` for the one
+#: format whose bytes depend on it. The two hashes answer different questions:
+#: `params_hash` identifies a *design*, a cache key identifies *files*.
+NON_GEOMETRIC_FIELDS = ("name", "print")
 
 
 # --------------------------------------------------------------------------
@@ -120,6 +125,10 @@ class BuildReport:
     volumes_cm3: dict
     artifacts: list[dict] = field(default_factory=list)
     timings: dict = field(default_factory=dict)
+    #: What the chosen infill plan costs and what the alternatives cost, from
+    #: `printplan.ledger`. Empty unless a 3MF was asked for: it is measured off
+    #: the built solids and nothing else on this report needs it.
+    print_ledger: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -223,13 +232,17 @@ def emit(
     formats: Sequence[Format] = ("glb",),
     *,
     quality: Quality | None = None,
+    params: Params | None = None,
 ) -> list[Artifact]:
     """Write artifacts for an already-built result.  Separate from `build` on
     purpose: one build can serve several formats, and a build with no filesystem
-    is a useful thing for tests."""
+    is a useful thing for tests.
+
+    `params` is required by 3MF alone, which writes print settings into the file
+    and reads them from `params.print`."""
     from .exporters import write_artifacts
 
-    return write_artifacts(result, Path(outdir), formats, quality=quality)
+    return write_artifacts(result, Path(outdir), formats, quality=quality, params=params)
 
 
 def build_and_emit(
@@ -258,8 +271,17 @@ def build_and_emit(
     result = build(effective, on_stage=on_stage)
     t_build = time.perf_counter() - t0
     t0 = time.perf_counter()
-    artifacts = emit(result, outdir, formats, quality=_resolve_quality(effective))
+    artifacts = emit(result, outdir, formats, quality=_resolve_quality(effective),
+                     params=effective)
     t_emit = time.perf_counter() - t0
+    ledger: dict = {}
+    if "3mf" in formats:
+        from .printplan import ledger as print_ledger, resolve as resolve_plan
+
+        # Measured on the solids, in assembly orientation: turning a part over
+        # does not change its volume or its surface area, so the ledger does not
+        # care which frame it is read in.
+        ledger = print_ledger(result, resolve_plan(effective), effective)
     if on_stage is not None:
         try:
             on_stage("write")
@@ -277,6 +299,7 @@ def build_and_emit(
         volumes_cm3=result.volumes,
         artifacts=[a.as_dict() for a in artifacts],
         timings={"build_s": round(t_build, 4), "emit_s": round(t_emit, 4)},
+        print_ledger=ledger,
     )
 
 

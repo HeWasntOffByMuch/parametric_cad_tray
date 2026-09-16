@@ -54,6 +54,16 @@ UI_HINTS = {
                        "manufacturing.nozzle_diameter"],
         },
         {
+            "id": "print",
+            "title": "Print settings",
+            "fields": ["print.profile", "print.reinforce_clamps",
+                       "print.support_forming_face", "print.extrusion_width",
+                       "print.layer_height"],
+            "description": "Written into the 3MF export. Nothing here moves a surface, "
+                           "so changing it never rebuilds the model.",
+            "collapsed": True,
+        },
+        {
             "id": "advanced",
             "title": "Advanced",
             "fields": ["tray.draft_angle", "tray.draft_mode", "tray.datum", "quality"],
@@ -115,7 +125,24 @@ UI_HINTS = {
         "mold.flange_relief_depth": {"unit": "mm", "step": 0.5, "unimplemented": True},
         "manufacturing.pin_fit_clearance": {"unit": "mm", "step": 0.05},
         "manufacturing.min_wall": {"unit": "mm", "step": 0.5},
-        "manufacturing.nozzle_diameter": {"unit": "mm", "step": 0.1},
+        "manufacturing.nozzle_diameter": {"unit": "mm", "step": 0.1,
+                                          "note": "Sets the default extrusion width and "
+                                                  "layer height for the 3MF export."},
+        "print.profile": {
+            "note": "How much infill, and where. `lean` empties the core and puts "
+                    "density back only under the clamps and the plug's forming face; "
+                    "`slicer` writes no settings at all and leaves your own preset alone.",
+        },
+        "print.reinforce_clamps": {
+            "note": "A clamp puts a concentrated load through the plate. Sparse infill "
+                    "is not a bearing surface.",
+        },
+        "print.support_forming_face": {
+            "note": "Top solid layers over a sparse lattice dimple, and the plug's top "
+                    "face is a forming surface.",
+        },
+        "print.extrusion_width": {"unit": "mm", "step": 0.05},
+        "print.layer_height": {"unit": "mm", "step": 0.05},
     },
     "derived": [
         {"key": "forming_gap", "label": "Forming gap", "unit": "mm", "precision": 3},
@@ -147,3 +174,31 @@ UI_HINTS["conflicts"] = [
     }
     for rule in _POLICY.UNSUPPORTED_COMBINATIONS
 ]
+
+
+#: The groups a deployment with a capability turned off must not render.  The
+#: JSON Schema is never trimmed - it is the one authoritative document and
+#: `test_schema.py` asserts it is served verbatim - so a gated group is hidden
+#: rather than removed, which is also what `hidden` already does for
+#: `schema_version` and `name`.
+FEATURE_GROUPS = {"3mf": ("print",)}
+
+
+def for_features(features: dict) -> dict:
+    """UI hints as this deployment should serve them.
+
+    Purely presentational: hiding a group cannot stop an API caller sending the
+    field, which is why `policy.format_diagnostics` refuses the format on the
+    server as well.
+    """
+    off = [group
+           for name, groups in FEATURE_GROUPS.items() if not features.get(name, False)
+           for group in groups]
+    if not off:
+        return UI_HINTS
+    hints = dict(UI_HINTS)
+    hints["groups"] = [g for g in UI_HINTS["groups"] if g["id"] not in off]
+    hints["hidden"] = list(UI_HINTS["hidden"]) + [
+        field for g in UI_HINTS["groups"] if g["id"] in off for field in g["fields"]
+    ] + [g for g in off]
+    return hints

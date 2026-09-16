@@ -5,9 +5,11 @@ import type { Json, Preset, SchemaResponse } from './api/types'
 import { SchemaForm } from './form/SchemaForm'
 import { conflictsIn, resolve as resolveConflicts } from './form/conflicts'
 import { fieldIndex } from './form/schema'
+import { enabled as flagEnabled, isFlagsChord, readFlags, writeFlags } from './flags'
 import { DerivedPanel } from './panels/DerivedPanel'
 import { DiagnosticsPanel } from './panels/DiagnosticsPanel'
 import { ExportPanel } from './panels/ExportPanel'
+import { FlagsPanel } from './panels/FlagsPanel'
 import { PreviewStatus } from './panels/PreviewStatus'
 import { UsageCounter } from './panels/UsageCounter'
 import { ViewerControls } from './panels/ViewerControls'
@@ -62,6 +64,29 @@ export function App({ options }: { options?: DesignOptions } = {}) {
   const [showFemale] = useState(true)
   const [resetToken, setResetToken] = useState(0)
   const [shared, setShared] = useState<string | null>(null)
+
+  // Hidden switches. Read once at mount - `?flags=` is consumed and remembered
+  // there - and toggled from the panel behind ctrl/cmd + shift + `.`.
+  const [flags, setFlags] = useState<Set<string>>(() => readFlags())
+  const [flagsOpen, setFlagsOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isFlagsChord(event)) return
+      event.preventDefault()
+      setFlagsOpen((open) => !open)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const toggleFlag = useCallback((name: string, on: boolean) => {
+    setFlags((current) => {
+      const next = new Set(current)
+      if (on) next.add(name)
+      else next.delete(name)
+      return writeFlags(next)
+    })
+  }, [])
+  const offer3mf = flagEnabled(flags, schema?.features, '3mf')
 
   useEffect(() => {
     let cancelled = false
@@ -226,6 +251,15 @@ export function App({ options }: { options?: DesignOptions } = {}) {
         </p>
       )}
 
+      {flagsOpen && (
+        <FlagsPanel
+          flags={flags}
+          features={schema?.features}
+          onToggle={toggleFlag}
+          onClose={() => setFlagsOpen(false)}
+        />
+      )}
+
       <aside className="params">
         <SchemaForm
           jsonSchema={schema.json_schema}
@@ -301,7 +335,12 @@ export function App({ options }: { options?: DesignOptions } = {}) {
           derived figures are how you check the design, not why you came. */}
       <aside className="info">
         <DiagnosticsPanel diagnostics={design.diagnostics} transportError={design.transportError} />
-        <ExportPanel params={design.params} disabled={blocked} allowExperimental={design.allowExperimental} />
+        <ExportPanel
+          params={design.params}
+          disabled={blocked}
+          allowExperimental={design.allowExperimental}
+          offer3mf={offer3mf}
+        />
         <details className="details-block" open>
           <summary>
             <span className="chevron" aria-hidden="true">▾</span> Derived

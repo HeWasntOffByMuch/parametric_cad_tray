@@ -91,9 +91,35 @@ document is byte-identical to `Params.model_json_schema()`; UI hints live in a
 separate `ui_hints` key and never leak into it.
 
 ### 3MF
-Not shipped. STEP and STL both come free from CadQuery; 3MF needs `lib3mf` or a
-`trimesh` round-trip through the tessellation, and the milestone said not to let
-it delay the API. It is a self-contained addition to `exporters.write_artifacts`.
+Shipped, behind a flag. It is the one export whose *content* depends on
+`params.print`, and the one that carries print settings rather than only
+geometry: the package is core 3MF plus `Metadata/Slic3r_PE_model.config`, which
+names each modifier volume by its triangle range. `traymold/threemf.py` writes
+it over stdlib `zipfile` and `xml.etree` - no `lib3mf`, no `trimesh` - and
+`traymold/printplan.py` decides what goes in it. See
+[`material-optimisation.md`](material-optimisation.md) §5.
+
+Both halves come out in one `tray-mold.3mf`, like the GLB, because a slicer
+wants the pair on one bed with its own settings attached. At export quality the
+file is 4.06 MB against 16.5 MB for the STL pair.
+
+Two consequences for this layer:
+
+* **`TRAYAPI_ENABLE_3MF`** gates it, default off. `GET /api/schema` publishes
+  `features: {"3mf": bool}` so the browser can hide the control, and
+  `policy.format_diagnostics` refuses the format with `E-FORMAT-3MF-DISABLED`
+  regardless - this API is public, and a caller that is not the form can ask for
+  anything.
+* **The print plan is in the cache key of a 3MF and of nothing else.** The core
+  excludes `print` from `canonical_params`, because it cannot move a surface, so
+  choosing an infill option never invalidates a preview that could not show it.
+  `cache.PRINT_AWARE_FORMATS` adds it back for the format whose bytes contain
+  it. `params_hash` identifies a *design*; a cache key identifies *files*.
+
+An export that wrote a 3MF also returns `print_ledger` on the job: the same
+geometry priced under each infill option, and the regions that put density back
+in. It is measured off the built solids, so it is present only when a 3MF was
+actually asked for.
 
 ---
 
