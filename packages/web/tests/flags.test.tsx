@@ -159,11 +159,14 @@ describe('the material ledger', () => {
     expect(row).toHaveTextContent(/in this file/i)
   })
 
-  it('shows no number for the option that writes no settings', async () => {
+  it('shows no number for the option that writes no settings, and says why', async () => {
     await exportWithLedger(backend.ledger())
     const row = (await screen.findByText('slicer')).closest('tr')!
     expect(row).toHaveTextContent('—')
-    expect(row).toHaveTextContent(/your own preset/i)
+    // the reason is prose, so it sits under the row rather than in the column
+    // where a percentage would have been
+    expect(row).not.toHaveTextContent(/your own preset/i)
+    expect(screen.getByTestId('print-ledger')).toHaveTextContent(/your own preset/i)
   })
 
   it('says where the density goes back in, and why', async () => {

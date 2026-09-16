@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api } from '../api/client'
 import { followJob } from '../api/jobStream'
 import { withSession } from '../analytics'
@@ -39,22 +39,37 @@ function PrintLedgerTable({ ledger }: { ledger: PrintLedger }) {
           <tr>
             <th>Infill plan</th>
             <th>Filament</th>
-            <th>vs {ledger.assumptions.reference}</th>
+            <th>Change</th>
           </tr>
         </thead>
         <tbody>
           {ledger.options.map((row) => (
-            <tr key={row.option} className={row.selected ? 'selected' : row.reference ? 'reference' : undefined}>
-              <th scope="row">
-                {row.option}
-                {row.selected && <span className="badge">in this file</span>}
-              </th>
-              <td>{row.grams === null ? '—' : `${row.grams} g`}</td>
-              <td>{row.vs_reference_pct === null ? (row.note ?? '—') : `${row.vs_reference_pct > 0 ? '+' : ''}${row.vs_reference_pct}%`}</td>
-            </tr>
+            <Fragment key={row.option}>
+              <tr className={row.selected ? 'selected' : row.reference ? 'reference' : undefined}>
+                <th scope="row">
+                  {row.option}
+                  {row.selected && <span className="badge">in this file</span>}
+                </th>
+                <td>{row.grams === null ? '—' : `${row.grams} g`}</td>
+                <td>
+                  {row.vs_reference_pct === null
+                    ? '—'
+                    : `${row.vs_reference_pct > 0 ? '+' : ''}${row.vs_reference_pct}%`}
+                </td>
+              </tr>
+              {/* Prose does not belong in a numeric column: the note is why a
+                  row has no number, so it goes under the row rather than in the
+                  cell where a percentage would have been. */}
+              {row.note && (
+                <tr className="note">
+                  <td colSpan={3}>{row.note}</td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>
+      <p className="hint">Change is against {ledger.assumptions.reference}.</p>
       {ledger.regions.length > 0 && (
         <details>
           <summary>Where the density goes back in</summary>

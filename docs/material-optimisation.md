@@ -436,13 +436,13 @@ rather than in a mold.
 
 **Done — the 3MF export with a print solver.** `traymold/printplan.py` resolves
 `params → regions`, `traymold/threemf.py` writes the project file, and the
-export panel reports the ledger. Three infill options, measured on the reference
-with `lean` selected:
+export panel reports the ledger. Three infill options, each priced with the
+regions it would place — so the table reads the same whichever one is selected:
 
 | option | filament | vs 6 perimeters / 30 % |
 |---|---:|---:|
 | 6 perimeters, 30 % infill *(what the brief starts from)* | 796 g | — |
-| `balanced` — 4 walls, 15 % gyroid | 524 g | −34 % |
+| `balanced` — 4 walls, 15 % gyroid | 543 g | −32 % |
 | **`lean` — 3 walls, 10 % gyroid** | **448 g** | **−44 %** |
 | `slicer` — writes no settings at all | — | your own preset decides |
 

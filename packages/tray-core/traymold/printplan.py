@@ -395,10 +395,21 @@ def ledger(result, plan: PrintPlan, params) -> dict:
                        note="whatever your own preset does - this option writes no settings")
             rows.append(row)
             continue
-        # Only the selected profile's regions exist as primitives; the others are
-        # priced on their global settings alone, which is what a slicer with no
-        # modifiers would give and is the honest comparison for them.
-        regions = plan.regions() if is_profile and name == plan.profile else None
+        # Each option is priced with the regions *it* would place, not with the
+        # selected option's. Pricing the alternatives bare made the number move
+        # when you picked one - lean read 417 g next to a selected `balanced`
+        # and 448 g once selected - which is the one thing a comparison table
+        # must not do. Resolving a plan is primitives only, ~90 ms, and it runs
+        # once per option on an export that takes tens of seconds.
+        # The reference row is uniform by definition - it is what someone
+        # printing this today does, with no modifiers anywhere.
+        if not is_profile:
+            regions = []
+        elif name == plan.profile:
+            regions = plan.regions()
+        else:
+            regions = resolve(params.model_copy(update={
+                "print": params.print.model_copy(update={"profile": name})})).regions()
         mm3 = total_for(settings, regions)
         row.update(cm3=round(mm3 / 1000.0, 1), grams=round(mm3 / 1000.0 * FILAMENT_DENSITY))
         rows.append(row)

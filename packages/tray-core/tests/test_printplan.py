@@ -183,6 +183,24 @@ def test_the_ledger_prices_every_option_on_the_same_geometry(built):
 
 
 @pytest.mark.slow
+def test_an_option_costs_the_same_whether_or_not_it_is_the_one_selected(built):
+    """The one thing a comparison table must not do is move when you pick a row.
+
+    Each option is priced with the regions *it* would place, so `lean` reads the
+    same next to a selected `balanced` as it does once selected. Pricing the
+    alternatives bare had it read 417 g and then 448 g.
+    """
+    quoted = {}
+    for selected in sorted(PROFILES):
+        params = with_print(profile=selected)
+        report = ledger(built, resolve(params), params)
+        quoted[selected] = {row["option"]: row["grams"] for row in report["options"]}
+    first = quoted[sorted(PROFILES)[0]]
+    for selected, rows in quoted.items():
+        assert rows == first, f"the table moved when {selected} was selected"
+
+
+@pytest.mark.slow
 def test_the_ledger_shows_where_density_goes_back_in(built):
     report = ledger(built, resolve(with_print(profile="lean")), with_print(profile="lean"))
     rows = {(r["part"], r["name"]): r for r in report["regions"]}

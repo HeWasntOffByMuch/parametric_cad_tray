@@ -785,6 +785,15 @@ button.lg { height: 36px; font-size: 13px; }
 .ledger td { color: var(--text-2); font-variant-numeric: tabular-nums; }
 .ledger tr.selected th[scope='row'], .ledger tr.selected td { color: var(--text); font-weight: 600; }
 .ledger tr.reference th[scope='row'], .ledger tr.reference td { color: var(--faint); }
+/* The note explaining why a row has no number: full width, left aligned, and
+   reading as helper text rather than as data. */
+.ledger tr.note td {
+  text-align: left;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 0 0 var(--s2);
+}
 .ledger .badge {
   margin-left: var(--s2);
   padding: 1px var(--s2);
