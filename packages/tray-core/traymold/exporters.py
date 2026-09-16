@@ -54,11 +54,46 @@ def export_step(shape, path: Path) -> Path:
     return path
 
 
+def mesh(shape, quality: Quality):
+    """Attach a triangulation, with a floor under how small a triangle may get.
+
+    The floor is the only reason this exists rather than `Shape.exportStl`,
+    which meshes with OCC's own floor and cannot be told otherwise.  OCC derives
+    its floor from the deflection - a micron at export quality - and then
+    honours the angular deflection all the way down to it, which does not
+    terminate usefully on a near-degenerate face: see `quality.MIN_MESH_SIZE`
+    for the 58 MB STL that motivated this.
+
+    Meshing is idempotent and shared.  `BRepMesh_IncrementalMesh` skips a face
+    that already carries a fine enough triangulation, and so does CadQuery's
+    `Shape.tessellate`, so a part exported as STL *and* 3MF is meshed once
+    rather than twice - which it previously was, at about 5 s a copy.
+    """
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.IMeshTools import IMeshTools_Parameters
+
+    parameters = IMeshTools_Parameters()
+    parameters.Deflection = quality.linear_deflection
+    parameters.Angle = quality.angular_deflection
+    # Relative, as CadQuery's own STL export is, and as the deflection table in
+    # `quality` was measured against. An absolute deflection was tried and
+    # rejected: it costs a third more triangles on the plug for 1 um of sag it
+    # was already inside (12.3 -> 16.8 MB, 9.3 -> 8.2 um), and it would silently
+    # change what `linear_deflection` means everywhere it is documented.
+    parameters.Relative = True
+    parameters.InParallel = True
+    parameters.MinSize = quality.min_mesh_size
+    BRepMesh_IncrementalMesh(shape.wrapped, parameters)
+    return shape
+
+
 def export_stl(shape, path: Path, quality: Quality) -> Path:
-    cq.exporters.export(
-        cq.Workplane(obj=shape), str(path), exportType="STL",
-        tolerance=quality.linear_deflection, angularTolerance=quality.angular_deflection,
-    )
+    from OCP.StlAPI import StlAPI_Writer
+
+    mesh(shape, quality)
+    writer = StlAPI_Writer()
+    writer.ASCIIMode = False
+    writer.Write(shape.wrapped, str(path))
     return path
 
 

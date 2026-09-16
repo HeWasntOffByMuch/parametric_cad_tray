@@ -177,6 +177,7 @@ jobs:
           API_BIND: ${{ vars.TRAYMOLD_API_BIND }}
           PROXY_NETWORK: ${{ vars.TRAYMOLD_PROXY_NETWORK }}
           ANALYTICS_DB: ${{ vars.TRAYMOLD_ANALYTICS_DB }}
+          ENABLE_3MF: ${{ vars.TRAYAPI_ENABLE_3MF }}
         run: |
           # Pinned to this commit, not to :latest, so the VPS runs exactly what
           # this run built and a rollback is re-running an older workflow.
@@ -189,6 +190,7 @@ jobs:
           TRAYMOLD_MEMORY_LIMIT=${MEMORY:-3g}
           TRAYMOLD_API_BIND=${API_BIND:-127.0.0.1:8000}
           TRAYMOLD_PROXY_NETWORK=${PROXY_NETWORK}
+          TRAYAPI_ENABLE_3MF=${ENABLE_3MF:-0}
           EOF
 
           # A repository variable cannot be distinguished from an empty one, so

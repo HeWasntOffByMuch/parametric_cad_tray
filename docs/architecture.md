@@ -511,6 +511,28 @@ of a sequence of booleans. Lofting the root blend into the plug was tried and
 does build an ellipse; it also moved the reference volume by 165 cm³, so it is a
 change to make deliberately and verify against the reference STEP, not a patch.
 
+**The entry-blend cut leaves sliver faces on a conic profile.** The same family
+of defect, one step milder than the superellipse's stray shell: the slivers are
+*inside* the shell rather than across the opening, so the solid is valid and
+every invariant passes. On a `conic_obround` 175 × 175 the female comes out with
+eight extra faces of 0.43 cm² spanning z −0.011 … 0.069 — the first 0.08 mm of a
+3 mm blend, duplicated over the eight blend faces proper, which span its full
+height. The reference profile produces ten blend faces and no slivers.
+
+Nothing downstream can see them. `_checked` counts shells, not faces, and a
+sliver weighs nothing, so the volume bounds are satisfied too. What made them
+visible was the mesh: OCC honoured the angular deflection against the numerical
+noise in a near-degenerate surface and gave each sliver 125 000 triangles, and
+the exported female came to **54.6 MB against the male's 14.1 — four times the
+mesh for half the volume**.
+
+That symptom is fixed and the cause is not. `quality.MIN_MESH_SIZE` puts a floor
+under how small a triangle may be, which takes that female to 12.0 MB with the
+worst sag still inside the export budget (5.5 µm of 10). The slivers remain, and
+`tests/test_meshing.py` asserts both halves of that: that they are still there,
+and that they no longer cost anything. Removing them is the same single-loft
+lever above, and this note should go when it lands.
+
 ### 7.10 Assembly orientation is not print orientation
 
 The solids are built in assembly orientation and two consumers want different

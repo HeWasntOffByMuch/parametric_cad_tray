@@ -1,6 +1,7 @@
 """Version identifiers that participate in cache keys and export metadata."""
 
-SCHEMA_VERSION = "2.1.0"
+SCHEMA_VERSION = "2.2.0"
+# 2.2.0  added `quality.min_mesh_size`, the floor under a mesh triangle's edge.
 # 2.1.0  added `print`, the settings the 3MF export writes into the file. Purely
 #        additive and fully defaulted, so an older document still validates - and
 #        it is excluded from `api.NON_GEOMETRIC_FIELDS`, so it cannot move a
@@ -17,7 +18,12 @@ SCHEMA_VERSION = "2.1.0"
 #        face, and STEP/STL exports are now turned over into print orientation.
 #        The blend *defaults* moved too, but those live in the parameter
 #        document and invalidate themselves; these do not.
-MODEL_VERSION = "0.4.0"
+#
+# 0.5.0  meshing now carries a floor on triangle size (quality.MIN_MESH_SIZE),
+#        so the exported STL and 3MF change for unchanged parameters - by up to
+#        a factor of six on a profile that was meshing its sliver faces to
+#        death. The B-rep is untouched; only the tessellation of it moves.
+MODEL_VERSION = "0.5.0"
 
 
 def kernel_versions() -> dict[str, str]:

@@ -104,6 +104,15 @@ def _mesh_xml(verts, tris) -> str:
 
 
 def _tessellate(shape, quality):
+    """Triangles for one shape, from the shared mesh.
+
+    `exporters.mesh` is what sets the triangle-size floor; `Shape.tessellate`
+    then reuses the triangulation it finds rather than making its own, so the
+    3MF and the STL describe the same surface and the shape is meshed once.
+    """
+    from .exporters import mesh
+
+    mesh(shape, quality)
     vs, ts = shape.tessellate(quality.linear_deflection, quality.angular_deflection)
     return [(v.x, v.y, v.z) for v in vs], [tuple(t) for t in ts]
 

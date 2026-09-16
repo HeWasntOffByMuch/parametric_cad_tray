@@ -386,6 +386,9 @@ class QualityParams(_Model):
                                               description="target loft chord error, mm")
     linear_deflection: float | None = Field(default=None, gt=0, le=5.0)
     angular_deflection: float | None = Field(default=None, gt=0, le=1.5)
+    #: Floor on a mesh triangle's edge length, mm. Below it a triangle is
+    #: describing numerical noise rather than geometry - see quality.MIN_MESH_SIZE.
+    min_mesh_size: float | None = Field(default=None, gt=0, le=2.0)
 
 
 class Params(_Model):
