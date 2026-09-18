@@ -455,9 +455,15 @@ male    clamp-bearing-0/1       7.6 cm3   10% -> 70%    +4.6
 female  clamp-bearing-0/1      12.7 cm3   10% -> 70%    +7.6
 ```
 
-The file is **4.06 MB against 16.5 MB for the STL pair**. It is marked
-experimental in the export panel and offered to everyone; it is off until it is
-ticked, so the usual STEP + STL export is unchanged.
+The file is **4.06 MB against 16.5 MB for the STL pair**, one half to a plate.
+It is marked experimental in the export panel and offered to everyone; it is off
+until it is ticked, so the usual STEP + STL export is unchanged.
+
+It carries the **regions** and not the global plan: an object-level override
+beats the reader's own controls, so embedding one makes the slicer's wall and
+infill settings look broken. The globals come back on the job as
+`print_ledger.global_settings` for the reader to set, and the saving above
+assumes they do.
 
 Two things are worth knowing about how it is wired. `params.print` is excluded
 from `params_hash`, so choosing an infill option never rebuilds geometry that

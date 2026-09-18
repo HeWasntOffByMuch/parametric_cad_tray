@@ -70,6 +70,22 @@ function PrintLedgerTable({ ledger }: { ledger: PrintLedger }) {
         </tbody>
       </table>
       <p className="hint">Change is against {ledger.assumptions.reference}.</p>
+      {ledger.global_settings?.length > 0 && (
+        <div className="ledger-globals" data-testid="ledger-globals">
+          <p className="hint">
+            Set these in your slicer — the file reinforces the clamps and lightens the plug core,
+            and leaves everything else to your own profile.
+          </p>
+          <ul>
+            {ledger.global_settings.map((row) => (
+              <li key={row.label}>
+                <span>{row.label}</span>
+                <strong>{row.value}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {ledger.regions.length > 0 && (
         <details>
           <summary>Where the density goes back in</summary>
@@ -197,7 +213,7 @@ export function ExportPanel({
           </div>
           {formats.includes('3mf') && (
             <p className="hint warn" data-testid="format-3mf-note">
-              3MF carries the print plan, so a slicer opens it ready to print. New — open it and
+              3MF puts each half on its own plate and marks where to reinforce. New — open it and
               look before you trust it.
             </p>
           )}

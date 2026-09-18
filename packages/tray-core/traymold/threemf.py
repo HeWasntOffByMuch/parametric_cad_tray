@@ -69,6 +69,25 @@ _CONTENT_TYPES = (
 #: major.  Every component here is already in place in its own vertices.
 _IDENTITY = "1 0 0 0 1 0 0 0 1 0 0 0"
 
+#: The marker that makes Bambu Studio read `model_settings.config` as model data
+#: rather than as a stranger's file.
+#:
+#: Its importer sets `m_is_bbl_3mf` when it meets a metadata key beginning
+#: `BambuStudio:`, and that flag is what decides whether plates and part
+#: subtypes are applied.  Without it the config is still parsed - so the
+#: per-object *settings* land - but the plate mapping does not, and a
+#: `modifier_part` is loaded as ordinary geometry.  That is how the first
+#: attempt at this produced one plate and a mystery solid part: the modifiers
+#: became printable objects.
+#:
+#: It is one metadata line, not a printer profile.  Nothing here claims to *be*
+#: Bambu Studio - `Application` still says traymold - and no print profile is
+#: written, so the reader's own process and filament are untouched.
+_BAMBU_MARKER = '<metadata name="BambuStudio:3mfVersion">1</metadata>'
+
+#: Readers whose model data is gated behind that marker.
+_MARKED = {"orca"}
+
 
 @dataclass(frozen=True)
 class Flavour:
@@ -246,21 +265,24 @@ def _volumes_for(part: str, shape, regions, quality):
     return out
 
 
-def _header(created: str, note: str) -> list[str]:
-    return [
+def _header(created: str, note: str, marked: bool) -> list[str]:
+    out = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<model unit="millimeter" xml:lang="en-US" xmlns="{CORE_NS}">',
         '<metadata name="Application">traymold</metadata>',
         '<metadata name="Title">tray-mold</metadata>',
         f"<metadata name=\"Description\">{escape(note)}</metadata>",
         f'<metadata name="CreationDate">{created}</metadata>',
-        "<resources>",
     ]
+    if marked:
+        out.append(_BAMBU_MARKER)
+    out.append("<resources>")
+    return out
 
 
 def _write_orca(parts: dict, plan: PrintPlan, quality, note: str, created: str):
     """A part per component, a half per plate."""
-    model = _header(created, note)
+    model = _header(created, note, marked=True)
     build = ["<build>"]
     config = ['<?xml version="1.0" encoding="UTF-8"?>', "<config>"]
     plates: list[tuple[int, str]] = []
@@ -268,7 +290,6 @@ def _write_orca(parts: dict, plan: PrintPlan, quality, note: str, created: str):
 
     for part, shape in parts.items():
         part_plan = plan.parts.get(part)
-        base = part_plan.base if part_plan is not None else None
         volumes = _volumes_for(part, shape, part_plan.regions if part_plan else [], quality)
 
         # Children first: 3MF requires an object to exist before it is referenced.
@@ -291,14 +312,11 @@ def _write_orca(parts: dict, plan: PrintPlan, quality, note: str, created: str):
         config.append(f'<object id="{printed_id}">')
         config.append(f'<metadata key="name" value={quoteattr(part)}/>')
         config.append('<metadata key="extruder" value="1"/>')
-        if base is not None:
-            for key, value in settings_items(base, ORCA):
-                config.append(f'<metadata key={quoteattr(key)} value={quoteattr(value)}/>')
         for child_id, name, is_modifier, settings in children:
             kind = ORCA.modifier_kind if is_modifier else ORCA.part_kind
             config.append(f'<part id="{child_id}" subtype="{kind}">')
             config.append(f'<metadata key="name" value={quoteattr(name)}/>')
-            for key, value in settings_items(settings, ORCA, against=base if is_modifier else None):
+            for key, value in settings_items(settings, ORCA):
                 config.append(f'<metadata key={quoteattr(key)} value={quoteattr(value)}/>')
             config.append("</part>")
         config.append("</object>")
@@ -325,7 +343,7 @@ def _write_orca(parts: dict, plan: PrintPlan, quality, note: str, created: str):
 
 def _write_prusa(parts: dict, plan: PrintPlan, quality, note: str, created: str):
     """One mesh per object; parts are triangle ranges within it."""
-    model = _header(created, note)
+    model = _header(created, note, marked=False)
     build = ["<build>"]
     config = ['<?xml version="1.0" encoding="UTF-8"?>', "<config>"]
     object_id = 0
@@ -333,7 +351,6 @@ def _write_prusa(parts: dict, plan: PrintPlan, quality, note: str, created: str)
     for part, shape in parts.items():
         object_id += 1
         part_plan = plan.parts.get(part)
-        base = part_plan.base if part_plan is not None else None
         volumes = _volumes_for(part, shape, part_plan.regions if part_plan else [], quality)
 
         verts: list = []
@@ -352,16 +369,12 @@ def _write_prusa(parts: dict, plan: PrintPlan, quality, note: str, created: str)
 
         config.append(f'<object id="{object_id}">')
         config.append(f'<metadata type="object" key="name" value={quoteattr(part)}/>')
-        if base is not None:
-            for key, value in settings_items(base, PRUSA):
-                config.append(
-                    f'<metadata type="object" key={quoteattr(key)} value={quoteattr(value)}/>')
         for name, is_modifier, settings, first, last in spans:
             kind = PRUSA.modifier_kind if is_modifier else PRUSA.part_kind
             config.append(f'<volume firstid="{first}" lastid="{last}">')
             config.append(f'<metadata type="volume" key="name" value={quoteattr(name)}/>')
             config.append(f'<metadata type="volume" key="volume_type" value="{kind}"/>')
-            for key, value in settings_items(settings, PRUSA, against=base if is_modifier else None):
+            for key, value in settings_items(settings, PRUSA):
                 config.append(
                     f'<metadata type="volume" key={quoteattr(key)} value={quoteattr(value)}/>')
             config.append("<mesh/>")

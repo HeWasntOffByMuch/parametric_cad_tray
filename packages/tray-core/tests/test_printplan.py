@@ -80,23 +80,23 @@ def test_widths_come_from_the_nozzle_when_they_are_not_given():
 
 def test_the_regions_a_lean_plan_places():
     names = {(r.part, r.name) for r in resolve(with_print(profile="lean")).regions()}
-    assert ("male", "forming-face-support") in names
-    assert ("male", "plug-core") in names
+    assert ("male", "support: under the forming face") in names
+    assert ("male", "lighten: plug core") in names
     # Both halves are reinforced at the clamp, whatever `in_male` says: the bolt
     # passes through the female and bears down onto the male's plate either way.
-    assert ("female", "clamp-bearing-0") in names
-    assert ("male", "clamp-bearing-0") in names
+    assert ("female", "reinforce: clamp 1") in names
+    assert ("male", "reinforce: clamp 1") in names
 
 
 def test_the_toggles_remove_exactly_their_own_regions():
     without_clamps = {r.name for r in resolve(with_print(reinforce_clamps=False)).regions()}
-    assert not any(n.startswith("clamp-bearing") for n in without_clamps)
-    assert "forming-face-support" in without_clamps
+    assert not any(n.startswith("reinforce: clamp") for n in without_clamps)
+    assert "support: under the forming face" in without_clamps
 
     without_face = {r.name for r in resolve(with_print(support_forming_face=False)).regions()}
-    assert "forming-face-support" not in without_face
-    assert "plug-core" not in without_face      # it exists only to sit under the band
-    assert any(n.startswith("clamp-bearing") for n in without_face)
+    assert "support: under the forming face" not in without_face
+    assert "lighten: plug core" not in without_face      # it exists only to sit under the band
+    assert any(n.startswith("reinforce: clamp") for n in without_face)
 
 
 def test_a_plan_places_nothing_for_a_half_that_is_not_being_built():
@@ -112,7 +112,7 @@ def test_the_plug_core_is_never_empty_enough_to_leave_the_band_unsupported():
     """0 % under a 5 mm solid band is 25 layers bridging over nothing."""
     for name in ("balanced", "lean"):
         core = next(r for r in resolve(with_print(profile=name)).regions()
-                    if r.name == "plug-core")
+                    if r.name == "lighten: plug core")
         assert core.settings.fill_density > 0.0
 
 
@@ -204,8 +204,8 @@ def test_an_option_costs_the_same_whether_or_not_it_is_the_one_selected(built):
 def test_the_ledger_shows_where_density_goes_back_in(built):
     report = ledger(built, resolve(with_print(profile="lean")), with_print(profile="lean"))
     rows = {(r["part"], r["name"]): r for r in report["regions"]}
-    clamp = rows[("female", "clamp-bearing-0")]
+    clamp = rows[("female", "reinforce: clamp 1")]
     assert clamp["to_density"] > clamp["from_density"] and clamp["delta_cm3"] > 0
-    core = rows[("male", "plug-core")]
+    core = rows[("male", "lighten: plug core")]
     assert core["to_density"] < core["from_density"] and core["delta_cm3"] < 0
     assert all(r["why"] for r in report["regions"])

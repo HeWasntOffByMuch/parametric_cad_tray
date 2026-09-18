@@ -46,6 +46,11 @@ export interface Artifact {
  */
 export interface PrintLedger {
   profile: string
+  /** What the reader has to set themselves. The file carries the local
+   *  reinforcement and deliberately nothing against the object itself: an
+   *  object-level override beats the slicer's own controls, which makes them
+   *  look broken. */
+  global_settings: { label: string; value: string }[]
   assumptions: {
     extrusion_width: number
     layer_height: number

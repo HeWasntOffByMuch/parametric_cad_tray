@@ -52,7 +52,7 @@ describe('the formats on offer', () => {
     await boot()
     expect(screen.queryByTestId('format-3mf-note')).toBeNull()
     await userEvent.click(screen.getByLabelText('3MF'))
-    expect(screen.getByTestId('format-3mf-note')).toHaveTextContent(/print plan/i)
+    expect(screen.getByTestId('format-3mf-note')).toHaveTextContent(/own plate/i)
   })
 
   it('sends the format when it has been ticked', async () => {
@@ -103,8 +103,17 @@ describe('the material ledger', () => {
     await exportWithLedger(backend.ledger())
     const table = await screen.findByTestId('print-ledger')
     await userEvent.click(within(table).getByText(/where the density goes back in/i))
-    expect(table).toHaveTextContent(/clamp-bearing-0/)
+    expect(table).toHaveTextContent(/reinforce: clamp 1/)
     expect(table).toHaveTextContent(/concentrated load/)
+  })
+
+  it('says which settings the reader still has to set themselves', async () => {
+    await exportWithLedger(backend.ledger())
+    const globals = await screen.findByTestId('ledger-globals')
+    expect(globals).toHaveTextContent('Walls')
+    expect(globals).toHaveTextContent('3')
+    expect(globals).toHaveTextContent('10% gyroid')
+    expect(globals).toHaveTextContent(/leaves everything else to your own profile/i)
   })
 
   it('is absent from an export that did not write a 3MF', async () => {

@@ -105,6 +105,23 @@ plate sits below z=0, so without a layout they arrive exactly on top of each
 other with the male sunk through the bed. At export quality the file is 4.06 MB
 against 16.5 MB for the STL pair.
 
+**Bambu Studio only applies model data it recognises as its own.** Its importer
+sets `m_is_bbl_3mf` when it meets a metadata key beginning `BambuStudio:`, and
+that flag is what decides whether plates and part subtypes are honoured. Without
+it the config is still parsed - so per-object settings land - but the plate
+mapping is dropped and a `modifier_part` loads as ordinary geometry, which is
+how the first attempt produced one plate and a mystery solid part. The file
+therefore carries `<metadata name="BambuStudio:3mfVersion">1</metadata>`: one
+line, not a printer profile. Nothing claims to *be* Bambu Studio - `Application`
+still says traymold - and no print profile is written.
+
+**Nothing is written against the object itself, only against its regions.** An
+object-level override beats the reader's own controls, so a wall-loops slider
+stops doing anything and the file looks broken. The regions are local and
+additive and do not have that problem, so the plan reinforces where it must and
+leaves the body to whatever profile the reader has loaded. What they should set
+globally comes back on the job as `print_ledger.global_settings`.
+
 `print.flavour` picks the dialect, and it is not cosmetic. Orca and Bambu Studio
 gather a part's pieces under one object's `<components>` and describe them in
 `Metadata/model_settings.config`; PrusaSlicer wants one concatenated mesh with

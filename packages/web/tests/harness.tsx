@@ -175,6 +175,11 @@ export class FakeBackend {
   ledger() {
     return {
       profile: 'lean',
+      global_settings: [
+        { label: 'Walls', value: '3' },
+        { label: 'Infill', value: '10% gyroid' },
+        { label: 'Top / bottom shells', value: '6 / 5' },
+      ],
       assumptions: {
         extrusion_width: 0.45, layer_height: 0.2, filament_density_g_cm3: 1.24,
         reference: '6 perimeters, 30 % infill',
@@ -187,7 +192,7 @@ export class FakeBackend {
         { option: 'lean', reference: false, selected: true, cm3: 360.9, grams: 448, vs_reference_pct: -44 },
       ],
       regions: [
-        { part: 'female', name: 'clamp-bearing-0', cm3: 12.7, from_density: 0.1, to_density: 0.7,
+        { part: 'female', name: 'reinforce: clamp 1', cm3: 12.7, from_density: 0.1, to_density: 0.7,
           delta_cm3: 7.6, why: 'a clamp puts a concentrated load through the plate here' },
       ],
       solid_cm3: { male: 994.2, female: 512.4 },

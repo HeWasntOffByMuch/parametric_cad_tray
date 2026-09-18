@@ -210,14 +210,34 @@ def test_a_modifier_says_only_what_it_changes(flavour):
     assert settings_items(Settings(), flavour) == []
 
 
-def test_the_slicer_profile_writes_a_mesh_and_no_settings(tmp_path, built):
+def test_the_slicer_profile_writes_a_mesh_and_no_modifiers(tmp_path, built):
     zf = written(tmp_path, built, with_print(flavour="orca", profile="slicer"))
     config = ET.fromstring(zf.read(ORCA.config))
     for obj in config.findall("object"):
-        keys = [m.get("key") for m in obj.findall("./metadata")]
-        assert keys == ["name", "extruder"], "an unplanned export must not touch the preset"
         assert len(obj.findall("part")) == 1
     assert model_of(zf).findall(".//c:triangle", NS)
+
+
+@pytest.mark.parametrize("flavour,dialect", [("orca", ORCA), ("prusa", PRUSA)])
+def test_the_body_is_left_to_the_readers_own_profile(tmp_path, built, flavour, dialect):
+    """Nothing is written against the object itself, only against the regions.
+
+    An object-level override is not a suggestion - it wins over the reader's own
+    controls, so a wall-loops slider stops doing anything and the file looks
+    broken. The regions are local and additive and do not have that problem, so
+    the plan reinforces where it must and leaves the body alone.
+    """
+    zf = written(tmp_path, built, with_print(flavour=flavour, profile="lean"))
+    config = ET.fromstring(zf.read(dialect.config))
+    setting_keys = set(dialect.keys[name][0] for name in dialect.keys)
+    for obj in config.findall("object"):
+        on_object = {m.get("key") for m in obj.findall("./metadata")}
+        assert not (on_object & setting_keys), (
+            f"{on_object & setting_keys} on the object would override the reader's own settings"
+        )
+    # the regions still carry theirs
+    written_values = {m.get("key") for m in config.iter("metadata")}
+    assert written_values & setting_keys
 
 
 def test_provenance_records_the_plan_and_the_dialect(tmp_path, built):
@@ -255,7 +275,7 @@ def test_a_clamp_region_still_lands_on_its_bore_after_being_laid_out(built):
     female = cq.Solid(placed["female"].wrapped)
     thickness = REF_4X7.mold.cavity_plate_thickness
     region = next(r for r in moved.regions()
-                  if r.part == "female" and r.name == "clamp-bearing-0")
+                  if r.part == "female" and r.name == "reinforce: clamp 1")
     box = region.solid.BoundingBox()
     probe = (cq.Workplane("XY").workplane(offset=-1.0)
              .center(box.center.x, box.center.y).circle(2.0).extrude(thickness + 2.0).val())

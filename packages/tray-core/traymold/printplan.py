@@ -105,6 +105,13 @@ class PartPlan:
     regions: list[Region] = field(default_factory=list)
 
 
+#: A region states only what it changes.  The object itself carries no settings
+#: at all - see the note in `threemf` - so there is no stated baseline for a
+#: region to be relative to, and every value here is absolute.
+def _only(**kw) -> "Settings":
+    return Settings(**kw)
+
+
 @dataclass
 class PrintPlan:
     profile: str
@@ -232,15 +239,15 @@ def resolve(params) -> PrintPlan:
     if params.print.support_forming_face and "male" in plan.parts:
         band = min(FORMING_FACE_BAND, depth / 2.0)
         add("male", Region(
-            "forming-face-support", "male", prism(0.0, depth - band, depth),
-            replace(base, fill_density=max(0.35, base.fill_density or 0.0)),
+            "support: under the forming face", "male", prism(0.0, depth - band, depth),
+            _only(fill_density=max(0.35, base.fill_density or 0.0)),
             "top solid layers over a sparse lattice dimple, and this face forms leather",
         ))
         # Only worth naming when there is a plug left under the band to empty.
         if depth - band > 1.0:
             add("male", Region(
-                "plug-core", "male", prism(-PLUG_CORE_INSET, 0.0, depth - band),
-                replace(base, fill_density=_plug_core_density(base)),
+                "lighten: plug core", "male", prism(-PLUG_CORE_INSET, 0.0, depth - band),
+                _only(fill_density=_plug_core_density(base)),
                 "a closed box in compression; its middle carries nothing",
             ))
 
@@ -248,19 +255,19 @@ def resolve(params) -> PrintPlan:
     if params.print.reinforce_clamps and f.clamp_holes.enabled:
         ch = f.clamp_holes
         radius = CLAMP_BEARING_FACTOR * ch.diameter / 2.0
-        dense = replace(base, fill_density=max(0.70, base.fill_density or 0.0),
-                        perimeters=max(4, base.perimeters or 0))
+        dense = _only(fill_density=max(0.70, base.fill_density or 0.0),
+                      perimeters=max(4, base.perimeters or 0))
         for index, (x, y) in enumerate(_corner_points(params, ch.inset, ch.diagonal, ch.pattern)):
             # Both halves, whatever `in_male` says: the bolt passes through the
             # female and bears down onto the male's plate either way, so the
             # male's plate takes the same load with or without a bore in it.
             add("female", Region(
-                f"clamp-bearing-{index}", "female",
+                f"reinforce: clamp {index + 1}", "female",
                 cq.Workplane("XY").center(x, y).circle(radius).extrude(t_cav).val(),
                 dense, "a clamp puts a concentrated load through the plate here",
             ))
             add("male", Region(
-                f"clamp-bearing-{index}", "male",
+                f"reinforce: clamp {index + 1}", "male",
                 cq.Workplane("XY").workplane(offset=-bp).center(x, y)
                   .circle(radius).extrude(bp).val(),
                 dense, "a clamp puts a concentrated load through the plate here",
@@ -271,10 +278,10 @@ def resolve(params) -> PrintPlan:
         ap = f.alignment_pins
         for index, (x, y) in enumerate(_corner_points(params, ap.inset, "nw_se", ap.pattern)):
             add("male", Region(
-                f"pin-{index}", "male",
+                f"solid: alignment pin {index + 1}", "male",
                 cq.Workplane("XY").center(x, y).circle(ap.diameter / 2.0 + 1.0)
                   .extrude(ap.height).val(),
-                replace(base, fill_density=1.0, perimeters=max(4, base.perimeters or 0)),
+                _only(fill_density=1.0, perimeters=max(4, base.perimeters or 0)),
                 "a slender printed column; sparse infill shears it off",
             ))
     return plan
@@ -437,8 +444,22 @@ def ledger(result, plan: PrintPlan, params) -> dict:
             "delta_cm3": round(volume * (now - was), 1), "why": region.why,
         })
 
+    base = next(iter(plan.parts.values())).base if plan.parts else Settings()
     return {
         "profile": plan.profile,
+        # The file carries the local reinforcement and nothing else, so these
+        # are the reader's to set - and saying so is the difference between a
+        # ledger that describes the print and one that describes a wish.
+        "global_settings": [
+            {"label": label, "value": render(value)}
+            for label, value in (
+                ("Walls", base.perimeters),
+                ("Infill", f"{round((base.fill_density or 0) * 100)}%"
+                           f"{' ' + base.fill_pattern if base.fill_pattern else ''}"),
+                ("Top / bottom shells", f"{base.top_solid_layers} / {base.bottom_solid_layers}"),
+            )
+            if (render := str) and value not in (None, "0%")
+        ],
         "assumptions": {
             "extrusion_width": ew, "layer_height": lh,
             "filament_density_g_cm3": FILAMENT_DENSITY,
