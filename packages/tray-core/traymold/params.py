@@ -361,6 +361,12 @@ class PrintParams(_Model):
     #: Which infill plan to write into the 3MF.  `slicer` emits the mesh with no
     #: overrides at all, leaving whatever preset the user has tuned alone.
     profile: Literal["slicer", "balanced", "lean"] = "balanced"
+    #: Which slicer's project layout to write.  The two are not compatible in one
+    #: file and getting it wrong is not a cosmetic problem: a modifier the reader
+    #: does not recognise is read as ordinary geometry, so the clamp columns
+    #: would print as solid plastic.  `orca` (Bambu Studio, Orca) is the default
+    #: because it is the only one of the two with a concept of plates.
+    flavour: Literal["orca", "prusa"] = "orca"
     #: Extruded track width and layer height.  `None` derives them from
     #: `manufacturing.nozzle_diameter`, which is the only thing that knows how
     #: wide a line actually is.

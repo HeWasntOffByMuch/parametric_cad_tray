@@ -73,6 +73,7 @@
         "name": "ref-4x7-wetmold",
         "print": {
           "extrusion_width": null,
+          "flavour": "orca",
           "layer_height": null,
           "profile": "balanced",
           "reinforce_clamps": true,
@@ -86,7 +87,7 @@
           "min_mesh_size": null,
           "mode": "export"
         },
-        "schema_version": "2.2.0",
+        "schema_version": "2.3.0",
         "tray": {
           "datum": "inner",
           "depth": 25.0,
@@ -174,6 +175,7 @@
         "name": "ref-4x7-step",
         "print": {
           "extrusion_width": null,
+          "flavour": "orca",
           "layer_height": null,
           "profile": "balanced",
           "reinforce_clamps": true,
@@ -187,7 +189,7 @@
           "min_mesh_size": null,
           "mode": "export"
         },
-        "schema_version": "2.2.0",
+        "schema_version": "2.3.0",
         "tray": {
           "datum": "inner",
           "depth": 25.0,
@@ -274,6 +276,7 @@
       "name": "untitled",
       "print": {
         "extrusion_width": null,
+        "flavour": "orca",
         "layer_height": null,
         "profile": "balanced",
         "reinforce_clamps": true,
@@ -287,7 +290,7 @@
         "min_mesh_size": null,
         "mode": "export"
       },
-      "schema_version": "2.2.0",
+      "schema_version": "2.3.0",
       "tray": {
         "datum": "inner",
         "depth": 25.0,
@@ -1047,6 +1050,15 @@
               "default": null,
               "title": "Extrusion Width"
             },
+            "flavour": {
+              "default": "orca",
+              "enum": [
+                "orca",
+                "prusa"
+              ],
+              "title": "Flavour",
+              "type": "string"
+            },
             "layer_height": {
               "anyOf": [
                 {
@@ -1438,6 +1450,7 @@
           "$ref": "#/$defs/PrintParams",
           "default": {
             "extrusion_width": null,
+            "flavour": "orca",
             "layer_height": null,
             "profile": "balanced",
             "reinforce_clamps": true,
@@ -1456,7 +1469,7 @@
           }
         },
         "schema_version": {
-          "default": "2.2.0",
+          "default": "2.3.0",
           "title": "Schema Version",
           "type": "string"
         },
@@ -1479,7 +1492,7 @@
       "type": "object"
     },
     "model_version": "0.5.0",
-    "schema_version": "2.2.0",
+    "schema_version": "2.3.0",
     "ui_hints": {
       "conflicts": [
         {
@@ -1635,6 +1648,9 @@
           "step": 0.05,
           "unit": "mm"
         },
+        "print.flavour": {
+          "note": "Which slicer the 3MF is written for. The two layouts are not compatible in one file, and a reader that does not recognise a modifier prints it as solid plastic. `orca` covers Bambu Studio and Orca, and is the only one with build plates."
+        },
         "print.layer_height": {
           "step": 0.05,
           "unit": "mm"
@@ -1783,6 +1799,7 @@
           "description": "Written into the 3MF export, which is experimental. Nothing here moves a surface, so changing it never rebuilds the model.",
           "fields": [
             "print.profile",
+            "print.flavour",
             "print.reinforce_clamps",
             "print.support_forming_face",
             "print.extrusion_width",

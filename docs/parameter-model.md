@@ -182,6 +182,7 @@ leaves both halves volumetrically identical.
 | field | default | |
 |---|---|---|
 | `profile` | `balanced` | `slicer` writes no settings at all; `balanced` is 4 walls / 15 % gyroid; `lean` is 3 walls / 10 % |
+| `flavour` | `orca` | which slicer's project layout to write. `orca` (Bambu Studio, Orca) puts each half on its own plate; `prusa` has no plates. Not cosmetic — a reader that cannot see a modifier prints it solid |
 | `reinforce_clamps` | `true` | a dense column through the plate at each clamp. Sparse infill is not a bearing surface |
 | `support_forming_face` | `true` | a dense band under the plug's top face, and a sparser core beneath it |
 | `extrusion_width` | `null` | `null` derives it from `manufacturing.nozzle_diameter` × 1.125 |

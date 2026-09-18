@@ -56,7 +56,7 @@ UI_HINTS = {
         {
             "id": "print",
             "title": "Print settings",
-            "fields": ["print.profile", "print.reinforce_clamps",
+            "fields": ["print.profile", "print.flavour", "print.reinforce_clamps",
                        "print.support_forming_face", "print.extrusion_width",
                        "print.layer_height"],
             "description": "Written into the 3MF export, which is experimental. Nothing "
@@ -132,6 +132,12 @@ UI_HINTS = {
             "note": "How much infill, and where. `lean` empties the core and puts "
                     "density back only under the clamps and the plug's forming face; "
                     "`slicer` writes no settings at all and leaves your own preset alone.",
+        },
+        "print.flavour": {
+            "note": "Which slicer the 3MF is written for. The two layouts are not "
+                    "compatible in one file, and a reader that does not recognise a "
+                    "modifier prints it as solid plastic. `orca` covers Bambu Studio "
+                    "and Orca, and is the only one with build plates.",
         },
         "print.reinforce_clamps": {
             "note": "A clamp puts a concentrated load through the plate. Sparse infill "

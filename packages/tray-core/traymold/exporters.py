@@ -244,12 +244,13 @@ def write_artifacts(
             if not printed:
                 continue
             # The plan moves with the parts. `oriented` is the only supported
-            # way to do that; see the frame note in `threemf`.
+            # way to do that; see the frame note in `threemf`. The plate layout
+            # is a second move, and `threemf.lay_out` does it the same way.
             plan = resolve_plan(params).oriented(print_oriented)
             part = next(iter(printed)) if len(printed) == 1 else "assembly"
             name = f"{part}.3mf" if part != "assembly" else "tray-mold.3mf"
             path = outdir / name
-            write_3mf(path, printed, plan, quality, trace)
+            write_3mf(path, printed, plan, quality, trace, params.print.flavour)
             out.append(_artifact(name, "3mf", part, path))
             continue
         if fmt == "glb":

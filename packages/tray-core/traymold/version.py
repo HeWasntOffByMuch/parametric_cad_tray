@@ -1,6 +1,7 @@
 """Version identifiers that participate in cache keys and export metadata."""
 
-SCHEMA_VERSION = "2.2.0"
+SCHEMA_VERSION = "2.3.0"
+# 2.3.0  added `print.flavour`, which slicer project layout a 3MF is written in.
 # 2.2.0  added `quality.min_mesh_size`, the floor under a mesh triangle's edge.
 # 2.1.0  added `print`, the settings the 3MF export writes into the file. Purely
 #        additive and fully defaulted, so an older document still validates - and

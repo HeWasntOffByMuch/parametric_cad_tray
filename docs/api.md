@@ -99,9 +99,19 @@ it over stdlib `zipfile` and `xml.etree` - no `lib3mf`, no `trimesh` - and
 `traymold/printplan.py` decides what goes in it. See
 [`material-optimisation.md`](material-optimisation.md) §5.
 
-Both halves come out in one `tray-mold.3mf`, like the GLB, because a slicer
-wants the pair on one bed with its own settings attached. At export quality the
-file is 4.06 MB against 16.5 MB for the STL pair.
+Both halves come out in one `tray-mold.3mf`, **one to a plate** - centred on it
+and standing on the bed. They are modelled around the origin and the male's base
+plate sits below z=0, so without a layout they arrive exactly on top of each
+other with the male sunk through the bed. At export quality the file is 4.06 MB
+against 16.5 MB for the STL pair.
+
+`print.flavour` picks the dialect, and it is not cosmetic. Orca and Bambu Studio
+gather a part's pieces under one object's `<components>` and describe them in
+`Metadata/model_settings.config`; PrusaSlicer wants one concatenated mesh with
+its parts named by triangle range in `Metadata/Slic3r_PE_model.config`. The two
+disagree about the mesh, so they cannot share a file - and a reader that does not
+recognise a modifier does not ignore it, it prints it as solid plastic. `orca` is
+the default: plates are its idea, PrusaSlicer has no such thing.
 
 It is **experimental and offered to everyone**. There was a deployment flag and
 a browser switch for a while; both are gone. A format nobody can find is a
