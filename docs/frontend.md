@@ -348,36 +348,16 @@ immediately.
 
 ---
 
-## 6b. Hidden switches
+## 6b. An experimental format is marked, not hidden
 
-Some capabilities are not on by default, and the control for one is not on the
-page until someone asks for it. `src/flags.ts` is that mechanism, and the rule
-it enforces is the only interesting thing about it:
+3MF sits beside STEP and STL in the export panel with an `experimental` badge on
+it, and a line under the fieldset saying what the format carries once it is
+ticked. It is off until asked for, so the usual export is unchanged.
 
-```
-a control appears  ==  the browser's switch is on  AND  the deployment offers it
-```
-
-A flag never grants anything. `GET /api/schema` returns `features`, the server
-refuses a gated format with `E-FORMAT-3MF-DISABLED` whatever the browser asks
-for, and a switch can only hide a control the deployment already has or reveal
-one it already offers. Turning one on by hand cannot reach past the API.
-
-Two ways in, deliberately both:
-
-| | |
-|---|---|
-| `?flags=3mf` | shareable, scriptable, and remembered afterwards — the same shape as `?api=` in `config.ts`, for the same reason. `?flags=` with nothing after it clears them, which is the way back out of a link someone sent you |
-| ctrl/cmd + shift + `.` | opens the switch panel on the page |
-
-The panel shows the deployment's answer beside each switch. A flag the server
-does not offer is not a broken flag — it is a capability that deployment has
-turned off — and someone who has just found the panel should be able to read
-that rather than flip a switch and watch an export fail.
-
-Switches live in this browser only. They are not part of the design document
-and never enter the shareable URL hash: a link carries *parameters*, and which
-controls the sender could see is not one.
+It was behind a deployment flag and a browser switch for a while, and both are
+gone. A format nobody can find is a format nobody reports a problem with, and
+the point of shipping something new is to hear about it. The badge is the whole
+mechanism.
 
 ## 6c. What an export costs to print
 
@@ -487,7 +467,6 @@ and how to rehearse the whole thing locally — is
 | `VITE_API_BASE_URL` | build | default backend URL baked into the bundle |
 | `window.__TRAYMOLD_API_BASE__` | runtime | editable in the deployed `index.html` |
 | `?api=` | runtime | per-visit override, remembered in localStorage |
-| `?flags=` | runtime | hidden switches, remembered in localStorage; §6b |
 | `VITE_MODEL_URL` | build | the model listing page linked in the header; unset hides the link |
 | `TRAYAPI_ALLOWED_ORIGINS` | API | CORS origins, comma separated; `*` is development only |
 | `TRAYAPI_WORKERS` | API | CAD worker processes (default 2) |
@@ -500,7 +479,6 @@ and how to rehearse the whole thing locally — is
 | `TRAYAPI_RATE_LIMIT_REQUESTS` / `_WINDOW_S` | API | build requests per client per window (20 / 60 s) |
 | `TRAYAPI_MAX_CONCURRENT_JOBS_PER_CLIENT` | API | in-flight builds per client (default 3) |
 | `TRAYAPI_MAX_REQUEST_BYTES` | API | request body ceiling (default 256 kB) |
-| `TRAYAPI_ENABLE_3MF` | API | offer the 3MF export (default off); §6b |
 | `TRAYMOLD_ANALYTICS_DB` | API | usage database path; empty disables analytics ([`analytics.md`](analytics.md)) |
 | `TRAYAPI_ANALYTICS_RATE_LIMIT` / `_WINDOW_S` | API | client events per client per window (60 / 60 s) |
 

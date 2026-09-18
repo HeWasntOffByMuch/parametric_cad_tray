@@ -37,8 +37,7 @@ class BuildRequest(ValidateRequest):
     session_id: str | None = Field(default=None, max_length=64)
     formats: list[Literal["glb", "step", "stl", "3mf"]] | None = Field(
         default=None,
-        description="defaults per endpoint: preview -> glb, export -> step+stl. "
-                    "3mf carries print settings and is gated per deployment",
+        description="defaults per endpoint: preview -> glb, export -> step+stl",
     )
 
 
@@ -142,9 +141,6 @@ class SchemaResponse(BaseModel):
     json_schema: dict[str, Any]
     defaults: dict[str, Any]
     ui_hints: dict[str, Any]
-    #: Gated capabilities this deployment offers, by name. The browser hides a
-    #: control it would only be refused for using; the server refuses it anyway.
-    features: dict[str, bool] = Field(default_factory=dict)
 
 
 class PresetSummary(BaseModel):

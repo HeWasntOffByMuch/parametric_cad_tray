@@ -91,7 +91,7 @@ document is byte-identical to `Params.model_json_schema()`; UI hints live in a
 separate `ui_hints` key and never leak into it.
 
 ### 3MF
-Shipped, behind a flag. It is the one export whose *content* depends on
+Shipped, marked experimental. It is the one export whose *content* depends on
 `params.print`, and the one that carries print settings rather than only
 geometry: the package is core 3MF plus `Metadata/Slic3r_PE_model.config`, which
 names each modifier volume by its triangle range. `traymold/threemf.py` writes
@@ -103,13 +103,13 @@ Both halves come out in one `tray-mold.3mf`, like the GLB, because a slicer
 wants the pair on one bed with its own settings attached. At export quality the
 file is 4.06 MB against 16.5 MB for the STL pair.
 
-Two consequences for this layer:
+It is **experimental and offered to everyone**. There was a deployment flag and
+a browser switch for a while; both are gone. A format nobody can find is a
+format nobody reports a problem with, which is the wrong trade for something
+new, so it is marked in the export panel instead of hidden behind anything.
 
-* **`TRAYAPI_ENABLE_3MF`** gates it, default off. `GET /api/schema` publishes
-  `features: {"3mf": bool}` so the browser can hide the control, and
-  `policy.format_diagnostics` refuses the format with `E-FORMAT-3MF-DISABLED`
-  regardless - this API is public, and a caller that is not the form can ask for
-  anything.
+One consequence for this layer:
+
 * **The print plan is in the cache key of a 3MF and of nothing else.** The core
   excludes `print` from `canonical_params`, because it cannot move a surface, so
   choosing an infill option never invalidates a preview that could not show it.

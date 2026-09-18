@@ -9,8 +9,7 @@ def test_schema_is_served(client):
     response = client.get("/api/schema")
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"schema_version", "model_version", "json_schema", "defaults",
-                         "ui_hints", "features"}
+    assert set(body) == {"schema_version", "model_version", "json_schema", "defaults", "ui_hints"}
 
 
 def test_schema_is_generated_from_the_core_models_not_restated(client):

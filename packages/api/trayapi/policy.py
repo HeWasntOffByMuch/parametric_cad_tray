@@ -6,48 +6,6 @@ core stays free of product decisions; this is where a parameter is gated.
 
 from __future__ import annotations
 
-#: Export formats that a deployment can turn off, and what to say when one is
-#: asked for while it is off. A flag is a product decision about what is
-#: exposed, which is what this module is for; the core can always write the
-#: format, and `traymold.exporters` knows nothing about any of this.
-GATED_FORMATS = {
-    "3mf": {
-        "code": "E-FORMAT-3MF-DISABLED",
-        "field": "formats",
-        "setting": "enable_3mf",
-        "message": (
-            "3MF export is not enabled on this deployment. It is the one format "
-            "that carries print settings, and it is off by default. Set "
-            "TRAYAPI_ENABLE_3MF=1 on the server to offer it."
-        ),
-    },
-}
-
-
-def format_diagnostics(formats, features: dict) -> list[dict]:
-    """Formats this deployment does not currently offer.
-
-    Checked on the server rather than only hidden in the browser: the API is
-    public, and a caller that is not the form can ask for anything.
-    """
-    out = []
-    for name in formats or ():
-        rule = GATED_FORMATS.get(name)
-        if rule is not None and not features.get(name, False):
-            out.append({"code": rule["code"], "severity": "error",
-                        "field": rule["field"], "message": rule["message"]})
-    return out
-
-
-def features() -> dict:
-    """Which gated capabilities this deployment offers.  Served on /api/schema
-    so the browser can hide a control it would only be refused for using."""
-    from .settings import SETTINGS
-
-    return {name: bool(getattr(SETTINGS, rule["setting"]))
-            for name, rule in GATED_FORMATS.items()}
-
-
 DRAFT_EXPERIMENTAL = {
     "code": "E-DRAFT-EXPERIMENTAL",
     "severity": "error",

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useRef, useState } from 'react'
 import { ApiError, api } from '../api/client'
 import { followJob } from '../api/jobStream'
 import { withSession } from '../analytics'
@@ -98,18 +98,26 @@ function PrintLedgerTable({ ledger }: { ledger: PrintLedger }) {
  * preview in flight does not block an export. Artifacts appear only once the
  * job completes.
  */
+/** The formats on offer, in the order they are shown.
+ *
+ *  3MF is marked rather than hidden. It is the newest of the three and the only
+ *  one whose content depends on anything but the geometry, so it is worth
+ *  saying so next to the checkbox - but a format nobody can find is a format
+ *  nobody reports a problem with. */
+const FORMATS: { name: string; label: string; experimental?: boolean }[] = [
+  { name: 'step', label: 'STEP' },
+  { name: 'stl', label: 'STL' },
+  { name: '3mf', label: '3MF', experimental: true },
+]
+
 export function ExportPanel({
   params,
   disabled,
   allowExperimental,
-  offer3mf = false,
 }: {
   params: Json
   disabled: boolean
   allowExperimental: boolean
-  /** The 3MF export is gated per deployment and revealed by a hidden switch;
-   *  see `flags.ts`. Offering it when either says no would only earn a 422. */
-  offer3mf?: boolean
 }) {
   const [parts, setParts] = useState<Parts>('both')
   const [formats, setFormats] = useState<string[]>(['step', 'stl'])
@@ -155,13 +163,6 @@ export function ExportPanel({
   const toggleFormat = (name: string) =>
     setFormats((current) => (current.includes(name) ? current.filter((f) => f !== name) : [...current, name]))
 
-  // A switch turned back off, or a deployment that stopped offering the format,
-  // must not leave it selected: the request would be refused and the user would
-  // have no control to un-tick.
-  useEffect(() => {
-    if (!offer3mf) setFormats((current) => (current.includes('3mf') ? current.filter((f) => f !== '3mf') : current))
-  }, [offer3mf])
-
   const artifacts = job?.state === 'complete' ? Object.values(job.artifacts) : []
 
   return (
@@ -179,18 +180,27 @@ export function ExportPanel({
         <fieldset className="formats">
           <legend>Formats</legend>
           <div className="format-options">
-            {(offer3mf ? ['step', 'stl', '3mf'] : ['step', 'stl']).map((name) => (
-              <label key={name} className="checkbox">
+            {FORMATS.map((format) => (
+              <label key={format.name} className="checkbox">
                 <input
                   type="checkbox"
-                  aria-label={name.toUpperCase()}
-                  checked={formats.includes(name)}
-                  onChange={() => toggleFormat(name)}
+                  aria-label={format.label}
+                  checked={formats.includes(format.name)}
+                  onChange={() => toggleFormat(format.name)}
                 />
-                <span>{name.toUpperCase()}</span>
+                <span>
+                  {format.label}
+                  {format.experimental && <span className="badge warn">experimental</span>}
+                </span>
               </label>
             ))}
           </div>
+          {formats.includes('3mf') && (
+            <p className="hint warn" data-testid="format-3mf-note">
+              3MF carries the print plan, so a slicer opens it ready to print. New — open it and
+              look before you trust it.
+            </p>
+          )}
         </fieldset>
       </div>
       <button

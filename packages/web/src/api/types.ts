@@ -130,9 +130,6 @@ export interface SchemaResponse {
   json_schema: Json
   defaults: Json
   ui_hints: UiHints
-  /** Gated capabilities this deployment offers. A hidden switch can reveal a
-   *  control only where the matching key here is true. */
-  features?: Record<string, boolean>
 }
 
 export interface Preset {

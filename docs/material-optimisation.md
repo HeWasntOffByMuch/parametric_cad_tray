@@ -455,11 +455,9 @@ male    clamp-bearing-0/1       7.6 cm3   10% -> 70%    +4.6
 female  clamp-bearing-0/1      12.7 cm3   10% -> 70%    +7.6
 ```
 
-The file is **4.06 MB against 16.5 MB for the STL pair**. It is behind a flag:
-`TRAYAPI_ENABLE_3MF=1` on the server, and `?flags=3mf` or ctrl/cmd + shift + `.`
-in the browser. Both have to agree — the browser hides a control it would only
-be refused for using, and the server refuses the format whatever the browser
-does.
+The file is **4.06 MB against 16.5 MB for the STL pair**. It is marked
+experimental in the export panel and offered to everyone; it is off until it is
+ticked, so the usual STEP + STL export is unchanged.
 
 Two things are worth knowing about how it is wired. `params.print` is excluded
 from `params_hash`, so choosing an infill option never rebuilds geometry that

@@ -59,8 +59,8 @@ UI_HINTS = {
             "fields": ["print.profile", "print.reinforce_clamps",
                        "print.support_forming_face", "print.extrusion_width",
                        "print.layer_height"],
-            "description": "Written into the 3MF export. Nothing here moves a surface, "
-                           "so changing it never rebuilds the model.",
+            "description": "Written into the 3MF export, which is experimental. Nothing "
+                           "here moves a surface, so changing it never rebuilds the model.",
             "collapsed": True,
         },
         {
@@ -175,30 +175,3 @@ UI_HINTS["conflicts"] = [
     for rule in _POLICY.UNSUPPORTED_COMBINATIONS
 ]
 
-
-#: The groups a deployment with a capability turned off must not render.  The
-#: JSON Schema is never trimmed - it is the one authoritative document and
-#: `test_schema.py` asserts it is served verbatim - so a gated group is hidden
-#: rather than removed, which is also what `hidden` already does for
-#: `schema_version` and `name`.
-FEATURE_GROUPS = {"3mf": ("print",)}
-
-
-def for_features(features: dict) -> dict:
-    """UI hints as this deployment should serve them.
-
-    Purely presentational: hiding a group cannot stop an API caller sending the
-    field, which is why `policy.format_diagnostics` refuses the format on the
-    server as well.
-    """
-    off = [group
-           for name, groups in FEATURE_GROUPS.items() if not features.get(name, False)
-           for group in groups]
-    if not off:
-        return UI_HINTS
-    hints = dict(UI_HINTS)
-    hints["groups"] = [g for g in UI_HINTS["groups"] if g["id"] not in off]
-    hints["hidden"] = list(UI_HINTS["hidden"]) + [
-        field for g in UI_HINTS["groups"] if g["id"] in off for field in g["fields"]
-    ] + [g for g in off]
-    return hints

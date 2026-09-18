@@ -61,7 +61,7 @@ describe('grouping', () => {
 
   it('uses the order the backend declares', () => {
     expect(groups.map((g) => g.id)).toEqual([
-      'shape', 'dimensions', 'leather', 'mold', 'features', 'manufacturing', 'advanced',
+      'shape', 'dimensions', 'leather', 'mold', 'features', 'manufacturing', 'print', 'advanced',
     ])
   })
 

@@ -16,13 +16,6 @@ def _float(name: str, default: float) -> float:
     return float(os.environ.get(name, default))
 
 
-def _bool(name: str, default: bool) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
 @dataclass(frozen=True)
 class Settings:
     cache_dir: Path = Path(os.environ.get("TRAYAPI_CACHE_DIR", "/tmp/trayapi-cache"))
@@ -34,16 +27,6 @@ class Settings:
     #: How long a worker may take to import traymold on startup.
     worker_start_timeout_s: float = _float("TRAYAPI_WORKER_START_TIMEOUT_S", 60.0)
     job_retention: int = _int("TRAYAPI_JOB_RETENTION", 500)
-
-    # -- feature flags -----------------------------------------------------
-    #: 3MF export, with the print plan inside it. Off by default: it is the
-    #: newest surface here, it is the only export whose content depends on
-    #: `params.print`, and it doubles an export's emit time because it
-    #: tessellates a second copy of both halves. Turn it on per deployment with
-    #: TRAYAPI_ENABLE_3MF=1; the browser reads the answer from /api/schema and
-    #: hides the control when it is off, and the server refuses the format
-    #: whatever the browser does.
-    enable_3mf: bool = _bool("TRAYAPI_ENABLE_3MF", False)
 
     # -- public exposure ---------------------------------------------------
     #: Origins allowed to call the API.  "*" is fine for local development and

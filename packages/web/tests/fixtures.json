@@ -300,9 +300,6 @@
         }
       }
     },
-    "features": {
-      "3mf": false
-    },
     "json_schema": {
       "$defs": {
         "AlignmentPins": {
@@ -1783,6 +1780,19 @@
         },
         {
           "collapsed": true,
+          "description": "Written into the 3MF export, which is experimental. Nothing here moves a surface, so changing it never rebuilds the model.",
+          "fields": [
+            "print.profile",
+            "print.reinforce_clamps",
+            "print.support_forming_face",
+            "print.extrusion_width",
+            "print.layer_height"
+          ],
+          "id": "print",
+          "title": "Print settings"
+        },
+        {
+          "collapsed": true,
           "fields": [
             "tray.draft_angle",
             "tray.draft_mode",
@@ -1795,13 +1805,7 @@
       ],
       "hidden": [
         "schema_version",
-        "name",
-        "print.profile",
-        "print.reinforce_clamps",
-        "print.support_forming_face",
-        "print.extrusion_width",
-        "print.layer_height",
-        "print"
+        "name"
       ]
     }
   }

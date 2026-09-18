@@ -20,9 +20,6 @@ export class FakeBackend {
    *  alike - which is the case that used to leave the app with no diagnostics
    *  at all. Set the diagnostics; the harness wraps them in the API's envelope. */
   rejectWith: ((params: Json) => any[] | null) | null = null
-  /** Gated capabilities the deployment claims to offer. null serves whatever
-   *  the captured fixture has, which is every flag off - the shipping default. */
-  features: Record<string, boolean> | null = null
   /** Public counters the app may display; null means the endpoint is absent. */
   stats: any = null
   statsError = false
@@ -98,8 +95,7 @@ export class FakeBackend {
       const ok = (payload: any, status = 200) =>
         new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
 
-      if (url.endsWith('/api/schema'))
-        return ok(backend.features ? { ...SCHEMA, features: backend.features } : SCHEMA)
+      if (url.endsWith('/api/schema')) return ok(SCHEMA)
       if (url.endsWith('/api/stats')) {
         if (backend.statsError) return new Response('nope', { status: 503 })
         return ok(backend.stats ?? { custom_molds_generated: 0, unique_designs_downloaded: 0,

@@ -353,46 +353,8 @@ long-lived registry credential is stored on the host.
 | `TRAYMOLD_API_BIND` | defaults to `127.0.0.1:8000`; change the port if something else on the host has it | api |
 | `TRAYMOLD_PROXY_NETWORK` | the docker network an existing containerised proxy is on; joins the API to it as `traymold-api` | api |
 | `TRAYMOLD_ANALYTICS_DB` | leave unset for the default path in the `traymold_analytics` volume; `off` disables analytics — see [`analytics.md`](analytics.md) | api |
-| `TRAYAPI_ENABLE_3MF` | `1` to offer the 3MF export; defaults to `0` — see below | api |
 | `TRAYMOLD_API_BASE_URL` | only if the API is not plain https on `TRAYMOLD_API_DOMAIN` | pages |
 | `TRAYMOLD_MODEL_URL` | the model listing page linked in the header, e.g. a MakerWorld model; unset hides the link | pages |
-
-### Turning the 3MF export on
-
-It is off everywhere by default. Two switches have to agree, and only the first
-of them is yours to set:
-
-1. **The deployment offers it.** Set the repository variable
-   `TRAYAPI_ENABLE_3MF` to `1` (Settings → Secrets and variables → Actions →
-   Variables) and re-run the **api** workflow. The variable is read into
-   `deploy/.env` at deploy time, so it takes effect on the next deploy and not
-   before — nothing on the VPS needs editing by hand.
-2. **The browser asks for it.** Open the site with `?flags=3mf`, or press
-   ctrl/cmd + shift + `.` and tick it. That is per-browser and per-person; see
-   [`frontend.md`](frontend.md) §6b.
-
-Check the first one landed without opening the site at all:
-
-```bash
-curl -s https://$TRAYMOLD_API_DOMAIN/api/schema | jq .features
-# {"3mf": true}
-```
-
-If that says `false`, the browser switch will stay inert and the panel will say
-so. If it says `true` and you still see no 3MF checkbox, the switch is the half
-that is missing.
-
-On the VPS directly — for a deployment that is not driven by the workflow — it
-is a line in `deploy/.env` and a recreate:
-
-```bash
-echo 'TRAYAPI_ENABLE_3MF=1' >> deploy/.env
-docker compose --env-file .env up -d --force-recreate api
-```
-
-**What it costs.** The 3MF is written from the same mesh the STL already needs,
-so it adds roughly the zip of it rather than a second tessellation. Before the
-mesh was shared this doubled an export's emit time; it no longer does.
 
 The frontend build takes its API URL from `TRAYMOLD_API_BASE_URL` if set and
 otherwise from `https://$TRAYMOLD_API_DOMAIN`, so the host is normally

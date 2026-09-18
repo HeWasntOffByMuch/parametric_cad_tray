@@ -514,7 +514,9 @@ button.lg { height: 36px; font-size: 13px; }
   padding: 0;
 }
 .export fieldset.formats { border: 0; padding: 0; margin: 0; }
-.export .format-options { display: flex; gap: var(--s4); }
+/* Wraps: the sidebar is 272 px and a marked format is wider than a bare one,
+   so the row has to be allowed a second line rather than clipping the marker. */
+.export .format-options { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); }
 .export .format-options .checkbox { margin: 0; }
 
 /* Downloads read as rows you click, not as a list of filenames. */
@@ -794,6 +796,18 @@ button.lg { height: 36px; font-size: 13px; }
   line-height: 1.45;
   padding: 0 0 var(--s2);
 }
+.badge.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.export .format-options .badge {
+  margin-left: var(--s2);
+  padding: 1px var(--s2);
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .ledger .badge {
   margin-left: var(--s2);
   padding: 1px var(--s2);
@@ -810,38 +824,3 @@ button.lg { height: 36px; font-size: 13px; }
 .ledger details li { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .ledger details strong { color: var(--text-2); font-weight: 500; }
 
-/* The hidden switch panel. Deliberately plain: it is a maintenance surface,
-   not part of the product, and it should not look like one. */
-.flags-panel {
-  position: fixed;
-  right: var(--s4);
-  bottom: var(--s4);
-  z-index: 50;
-  width: min(360px, calc(100vw - 2 * var(--s4)));
-  padding: var(--s4);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
-}
-.flags-panel header { display: flex; align-items: center; justify-content: space-between; }
-.flags-panel h2 {
-  margin: 0;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--muted);
-  font-weight: 600;
-}
-.flags-panel header button {
-  background: none;
-  border: 0;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 var(--s1);
-}
-.flags-panel ul { list-style: none; padding: 0; margin: var(--s3) 0; display: grid; gap: var(--s3); }
-.flags-panel .flag-name { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; }
-.flags-panel code { font-size: 11px; color: var(--text-2); }
