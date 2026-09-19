@@ -172,6 +172,26 @@ Reference note: clamp holes sit on one diagonal and pry notches on the other, so
 `diagonal` is part of the schema — the female has C2 rotational symmetry, not
 mirror symmetry.
 
+`trim_line` (offset, width, height) is the odd one out: it **adds** material
+where the others remove it. A bead on the female's parting face, following the
+cavity all the way round a set distance outside the entry fillet, standing proud
+towards the male. As the mold closes it presses a cutting line into the leather
+flange — a trim guide on the one face of the leather that meets the female.
+
+| field | default | |
+|---|---|---|
+| `offset` | 4.0 mm | from the **edge of the entry fillet**, not the cavity wall, so it reads as "how much flange to leave" and does not move when the fillet is resized |
+| `width` | 1.0 mm | at its base. The apex is flattened to `manufacturing.nozzle_diameter`, because a knife edge is not something a printer lays down |
+| `height` | 0.5 mm | how far it stands proud |
+
+Two things follow from where it sits. It is on the face the leather touches, and
+that face is the one pointing *up* once `exporters.print_oriented` has turned the
+female over — so the bead prints with nothing over it and needs no support. And
+the model has no flange gap, both halves being coincident at z=0, so a proud
+bead passes into the male's base plate in the assembled view. That is the model
+being simplified rather than the bead being wrong: in use there are millimetres
+of wet leather in between, which is the thing being marked.
+
 ### 2.7 `print`: how it is printed, not what it is
 
 The third thing the schema keeps apart from geometry, and the newest. Read by
@@ -377,6 +397,8 @@ implemented; the rest are specified for the validation milestone.
 | `E-MOLD-041` ✓ | error | `female_flange_width < min_wall` | i.e. `flange_width − gap < min_wall` |
 | `E-FEAT-050` ✓ | error | a corner feature's **signed distance to the cavity wall** `< min_wall`, measured against the plan curve | the bore or the rebate breaks into the forming wall. The boolean still returns one closed shell, so nothing downstream can see it. Covers clamp holes, alignment pins (over their fit clearance) and pry notches (over their inner edge); the diagnostic's `field` names which |
 | `E-FEAT-051` ✓ | error | `inset < d/2 + min_wall` | hole breaks the plate edge |
+| `E-FEAT-055` ✓ | error | the trim line's outer edge leaves less than `min_wall` to the plate edge | every wire of the bead is an outward offset of the base profile, so the clearance is `flange_width − (gap + setback + offset + width/2)` on both axes |
+| `W-FEAT-056` ✓ | warn | the trim line runs through a clamp bore or a pin hole | the hole is there either way; the mark is broken into arcs, which is worth knowing before printing |
 | `E-FEAT-053` | error | a pry notch overlaps a clamp hole | the reference avoids this via opposite diagonals |
 | `W-FEAT-061` | warn | no pins and no holes in both halves | reproduces the reference's loose registration |
 | `W-MFG-071` | warn | estimated volume > 1500 cm³ | the reference male alone is 993.8 cm³ |

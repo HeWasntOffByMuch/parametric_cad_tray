@@ -1,6 +1,8 @@
 """Version identifiers that participate in cache keys and export metadata."""
 
-SCHEMA_VERSION = "2.3.0"
+SCHEMA_VERSION = "2.4.0"
+# 2.4.0  added `features.trim_line`, the bead that marks a cutting line on the
+#        leather. Defaulted off, so unchanged documents build unchanged geometry.
 # 2.3.0  added `print.flavour`, which slicer project layout a 3MF is written in.
 # 2.2.0  added `quality.min_mesh_size`, the floor under a mesh triangle's edge.
 # 2.1.0  added `print`, the settings the 3MF export writes into the file. Purely

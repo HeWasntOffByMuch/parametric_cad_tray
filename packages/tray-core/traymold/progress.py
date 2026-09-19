@@ -34,6 +34,7 @@ LABELS: dict[str, str] = {
     "male_floor_blend": "blending the tray floor",
     "female_solid": "cutting the cavity",
     "female_entry_blend": "blending the cavity mouth",
+    "trim_line": "scribing the trim line",
     "features": "adding holes and pins",
     "write": "writing the files",
 }
@@ -44,18 +45,18 @@ COST: dict[str, dict[str, float]] = {
     "preview": {
         "profile": 1, "male_solid": 34, "male_root_blend": 1123,
         "male_floor_blend": 2240, "female_solid": 194,
-        "female_entry_blend": 1130, "features": 40, "write": 631,
+        "female_entry_blend": 1130, "trim_line": 470, "features": 40, "write": 631,
     },
     "export": {
         "profile": 1, "male_solid": 30, "male_root_blend": 2087,
         "male_floor_blend": 4594, "female_solid": 188,
-        "female_entry_blend": 1855, "features": 80, "write": 4803,
+        "female_entry_blend": 1855, "trim_line": 700, "features": 80, "write": 4803,
     },
 }
 
 #: The order stages run in.  `build` emits them in exactly this sequence.
 ORDER = ("profile", "male_solid", "male_root_blend", "male_floor_blend",
-         "female_solid", "female_entry_blend", "features", "write")
+         "female_solid", "female_entry_blend", "trim_line", "features", "write")
 
 
 def stages_for(params) -> list[str]:
@@ -77,6 +78,8 @@ def stages_for(params) -> list[str]:
         out.append("female_solid")
         if mold.female_entry_blend_top.active or mold.female_entry_blend_bottom.active:
             out.append("female_entry_blend")
+        if params.features.trim_line.enabled:
+            out.append("trim_line")
     f = params.features
     if f.clamp_holes.enabled or f.pry_notches.enabled or f.alignment_pins.enabled:
         out.append("features")

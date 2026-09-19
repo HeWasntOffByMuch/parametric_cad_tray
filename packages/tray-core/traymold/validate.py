@@ -91,6 +91,23 @@ def validate(params, *, with_geometry: bool = True) -> list[Diagnostic]:
         out.append(Diagnostic("E-MOLD-040", "error", "mold.cavity_plate_thickness",
                               f"{mold.cavity_plate_thickness} mm is less than the draw depth "
                               f"({tray.depth} mm); the plug would protrude"))
+    trim = params.features.trim_line
+    if trim.enabled:
+        # Every wire of the bead is an outward offset of the base profile, so
+        # its outer edge clears the plate edge by the same amount on both axes:
+        # the plate is the profile plus `flange_width`, and the bead's outer
+        # edge is the profile plus this.
+        reach = gap + mold.female_entry_blend_bottom.size + trim.offset + trim.width / 2.0
+        land = mold.flange_width - reach
+        if land < params.manufacturing.min_wall:
+            out.append(Diagnostic(
+                "E-FEAT-055", "error", "features.trim_line",
+                f"the trim line would reach {reach:.2f} mm from the cavity, leaving "
+                f"{land:+.2f} mm to the plate edge - below min_wall "
+                f"{params.manufacturing.min_wall} mm. Reduce features.trim_line.offset, "
+                f"or widen mold.flange_width.",
+            ))
+
     if mold.flange_width - gap < params.manufacturing.min_wall:
         out.append(Diagnostic("E-MOLD-041", "error", "mold.flange_width",
                               f"female flange would be {mold.flange_width - gap:.2f} mm, "
@@ -295,6 +312,42 @@ def _geometric_diagnostics(params, treatments, gap) -> list[Diagnostic]:
     poly = _polyline_for(json.dumps(params.tray.profile.model_dump(mode="json"), sort_keys=True))
     if poly is not None:
         out.extend(_placement_diagnostics(params, poly, gap))
+        out.extend(_trim_line_diagnostics(params, poly, gap))
+    return out
+
+
+def _trim_line_diagnostics(params, poly, gap) -> list[Diagnostic]:
+    """Anything that interrupts the line.
+
+    A bore through the bead is not wrong - the hole is there either way - but it
+    breaks the mark into arcs, and someone cutting to it should know that before
+    they print rather than after.
+    """
+    trim = params.features.trim_line
+    if not trim.enabled:
+        return []
+    # How far the bead's centreline runs outside the cavity wall.
+    centre = params.mold.female_entry_blend_bottom.size + trim.offset
+    out: list[Diagnostic] = []
+    for name, field, label in _CORNER_FEATURES:
+        feature = getattr(params.features, name)
+        if not feature.enabled or name == "pry_notches":
+            continue
+        radius = feature.diameter / 2.0 + (
+            params.manufacturing.pin_fit_clearance if name == "alignment_pins" else 0.0
+        )
+        diagonal = getattr(feature, "diagonal", "nw_se")
+        for px, py in _corner_points(params, feature.inset, diagonal, feature.pattern):
+            # `_clearance` measures to the cavity wall; the bead is `centre`
+            # further out, so this is the distance from the bore to the bead.
+            straddle = abs(_clearance(poly, px, py, gap) - centre)
+            if straddle < radius + trim.width / 2.0:
+                out.append(Diagnostic(
+                    "W-FEAT-056", "warning", "features.trim_line",
+                    f"the trim line runs through a {label}, which will break the mark. "
+                    f"Move it with features.trim_line.offset, or the hole with its inset.",
+                ))
+                break
     return out
 
 

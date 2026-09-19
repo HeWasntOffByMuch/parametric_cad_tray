@@ -336,10 +336,37 @@ class AlignmentPins(_Model):
     inset: float = Field(default=15.0, gt=0, le=200)
 
 
+class TrimLine(_Model):
+    """A raised bead on the female's parting face that embosses a cutting line
+    into the leather flange.
+
+    It follows the cavity outline all the way round, a set distance outside the
+    entry fillet, and stands proud of the face that meets the male - which is
+    the only female surface the leather touches.  Female only: the mark wants to
+    be on one face of the leather, not both.
+
+    The mold has no flange gap in the model - both halves are coincident at z=0
+    - so a proud bead passes into the male's base plate in the assembled view.
+    That is the model being simplified, not the bead being wrong: in use there
+    are millimetres of wet leather in between and the bead embosses it.
+    """
+
+    enabled: bool = False
+    #: Outward from the *edge of the entry fillet*, not from the cavity wall, so
+    #: it reads as "how much flange to leave" and does not move when the fillet
+    #: is resized.
+    offset: float = Field(default=4.0, ge=0.0, le=200.0,
+                          description="from the edge of the entry fillet, mm")
+    width: float = Field(default=1.0, gt=0.0, le=10.0, description="at its base, mm")
+    height: float = Field(default=0.5, gt=0.0, le=5.0,
+                          description="how far it stands proud of the parting face, mm")
+
+
 class Features(_Model):
     clamp_holes: ClampHoles = ClampHoles()
     pry_notches: PryNotches = PryNotches()
     alignment_pins: AlignmentPins = AlignmentPins()
+    trim_line: TrimLine = TrimLine()
 
 
 class ManufacturingParams(_Model):

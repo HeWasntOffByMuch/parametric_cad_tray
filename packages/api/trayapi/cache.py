@@ -86,6 +86,7 @@ IGNORED_BY: dict[str, tuple[tuple[str, ...], ...]] = {
         ("mold", "female_entry_blend_top"),
         ("mold", "female_entry_blend_bottom"),
         ("features", "pry_notches"),
+        ("features", "trim_line"),
         ("manufacturing", "pin_fit_clearance"),
     ),
     "female": (

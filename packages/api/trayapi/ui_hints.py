@@ -45,7 +45,7 @@ UI_HINTS = {
             "id": "features",
             "title": "Features",
             "fields": ["features.clamp_holes", "features.pry_notches",
-                       "features.alignment_pins"],
+                       "features.alignment_pins", "features.trim_line"],
         },
         {
             "id": "manufacturing",
@@ -123,6 +123,21 @@ UI_HINTS = {
         "mold.cavity_plate_thickness": {"unit": "mm", "step": 1, "slider": [3, 80]},
         "mold.plate_edge_chamfer": {"unit": "mm", "step": 0.5, "unimplemented": True},
         "mold.flange_relief_depth": {"unit": "mm", "step": 0.5, "unimplemented": True},
+        "features.trim_line": {
+            "note": "A bead on the face that meets the male, following the cavity all "
+                    "the way round. It presses a cutting line into the leather flange "
+                    "as the mold closes.",
+        },
+        "features.trim_line.offset": {
+            "unit": "mm", "step": 0.5,
+            "note": "From the edge of the entry fillet - how much flange to leave.",
+        },
+        "features.trim_line.width": {"unit": "mm", "step": 0.1},
+        "features.trim_line.height": {
+            "unit": "mm", "step": 0.1,
+            "note": "How far it stands proud. The apex is flattened to a nozzle width, "
+                    "so expect a line about that wide rather than a scribe.",
+        },
         "manufacturing.pin_fit_clearance": {"unit": "mm", "step": 0.05},
         "manufacturing.min_wall": {"unit": "mm", "step": 0.5},
         "manufacturing.nozzle_diameter": {"unit": "mm", "step": 0.1,

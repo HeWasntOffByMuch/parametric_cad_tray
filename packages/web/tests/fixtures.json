@@ -29,6 +29,12 @@
             "pattern": "diagonal_pair",
             "size_x": 15.0,
             "size_y": 15.0
+          },
+          "trim_line": {
+            "enabled": false,
+            "height": 0.5,
+            "offset": 4.0,
+            "width": 1.0
           }
         },
         "fit": {
@@ -87,7 +93,7 @@
           "min_mesh_size": null,
           "mode": "export"
         },
-        "schema_version": "2.3.0",
+        "schema_version": "2.4.0",
         "tray": {
           "datum": "inner",
           "depth": 25.0,
@@ -131,6 +137,12 @@
             "pattern": "diagonal_pair",
             "size_x": 15.0,
             "size_y": 15.0
+          },
+          "trim_line": {
+            "enabled": false,
+            "height": 0.5,
+            "offset": 4.0,
+            "width": 1.0
           }
         },
         "fit": {
@@ -189,7 +201,7 @@
           "min_mesh_size": null,
           "mode": "export"
         },
-        "schema_version": "2.3.0",
+        "schema_version": "2.4.0",
         "tray": {
           "datum": "inner",
           "depth": 25.0,
@@ -232,6 +244,12 @@
           "pattern": "diagonal_pair",
           "size_x": 15.0,
           "size_y": 15.0
+        },
+        "trim_line": {
+          "enabled": false,
+          "height": 0.5,
+          "offset": 4.0,
+          "width": 1.0
         }
       },
       "fit": {
@@ -290,7 +308,7 @@
         "min_mesh_size": null,
         "mode": "export"
       },
-      "schema_version": "2.3.0",
+      "schema_version": "2.4.0",
       "tray": {
         "datum": "inner",
         "depth": 25.0,
@@ -661,6 +679,15 @@
                 "pattern": "diagonal_pair",
                 "size_x": 15.0,
                 "size_y": 15.0
+              }
+            },
+            "trim_line": {
+              "$ref": "#/$defs/TrimLine",
+              "default": {
+                "enabled": false,
+                "height": 0.5,
+                "offset": 4.0,
+                "width": 1.0
               }
             }
           },
@@ -1356,6 +1383,43 @@
           },
           "title": "TrayParams",
           "type": "object"
+        },
+        "TrimLine": {
+          "additionalProperties": false,
+          "description": "A raised bead on the female's parting face that embosses a cutting line\ninto the leather flange.\n\nIt follows the cavity outline all the way round, a set distance outside the\nentry fillet, and stands proud of the face that meets the male - which is\nthe only female surface the leather touches.  Female only: the mark wants to\nbe on one face of the leather, not both.\n\nThe mold has no flange gap in the model - both halves are coincident at z=0\n- so a proud bead passes into the male's base plate in the assembled view.\nThat is the model being simplified, not the bead being wrong: in use there\nare millimetres of wet leather in between and the bead embosses it.",
+          "properties": {
+            "enabled": {
+              "default": false,
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "height": {
+              "default": 0.5,
+              "description": "how far it stands proud of the parting face, mm",
+              "exclusiveMinimum": 0.0,
+              "maximum": 5.0,
+              "title": "Height",
+              "type": "number"
+            },
+            "offset": {
+              "default": 4.0,
+              "description": "from the edge of the entry fillet, mm",
+              "maximum": 200.0,
+              "minimum": 0.0,
+              "title": "Offset",
+              "type": "number"
+            },
+            "width": {
+              "default": 1.0,
+              "description": "at its base, mm",
+              "exclusiveMinimum": 0.0,
+              "maximum": 10.0,
+              "title": "Width",
+              "type": "number"
+            }
+          },
+          "title": "TrimLine",
+          "type": "object"
         }
       },
       "additionalProperties": false,
@@ -1387,6 +1451,12 @@
               "pattern": "diagonal_pair",
               "size_x": 15.0,
               "size_y": 15.0
+            },
+            "trim_line": {
+              "enabled": false,
+              "height": 0.5,
+              "offset": 4.0,
+              "width": 1.0
             }
           }
         },
@@ -1469,7 +1539,7 @@
           }
         },
         "schema_version": {
-          "default": "2.3.0",
+          "default": "2.4.0",
           "title": "Schema Version",
           "type": "string"
         },
@@ -1492,7 +1562,7 @@
       "type": "object"
     },
     "model_version": "0.5.0",
-    "schema_version": "2.3.0",
+    "schema_version": "2.4.0",
     "ui_hints": {
       "conflicts": [
         {
@@ -1568,6 +1638,23 @@
         }
       ],
       "fields": {
+        "features.trim_line": {
+          "note": "A bead on the face that meets the male, following the cavity all the way round. It presses a cutting line into the leather flange as the mold closes."
+        },
+        "features.trim_line.height": {
+          "note": "How far it stands proud. The apex is flattened to a nozzle width, so expect a line about that wide rather than a scribe.",
+          "step": 0.1,
+          "unit": "mm"
+        },
+        "features.trim_line.offset": {
+          "note": "From the edge of the entry fillet - how much flange to leave.",
+          "step": 0.5,
+          "unit": "mm"
+        },
+        "features.trim_line.width": {
+          "step": 0.1,
+          "unit": "mm"
+        },
         "fit.clearance": {
           "slider": [
             -0.5,
@@ -1780,7 +1867,8 @@
           "fields": [
             "features.clamp_holes",
             "features.pry_notches",
-            "features.alignment_pins"
+            "features.alignment_pins",
+            "features.trim_line"
           ],
           "id": "features",
           "title": "Features"

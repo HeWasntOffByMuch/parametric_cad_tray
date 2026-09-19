@@ -420,6 +420,46 @@ def apply_female_entry_blend(solid: cq.Solid, family: ProfileFamily, params) -> 
 # --------------------------------------------------------------------------
 # step 5: manufacturing features
 # --------------------------------------------------------------------------
+def apply_trim_line(solid: cq.Solid, family: ProfileFamily, params) -> cq.Solid:
+    """The bead that marks a cutting line on the leather.  Adds material.
+
+    A closed loop on the **parting face**, following the cavity outline a set
+    distance outside the entry fillet, standing proud towards the male.  That is
+    the only female face the leather touches, so it is the only one a mark can
+    be made from.
+
+    Built from two lofts rather than a swept section: every wire here is a
+    single outward offset of the base profile, which is exactly what
+    `ProfileFamily` is for and what the whole module already trusts.  The ring
+    is the outer taper less the inner one.
+
+    The apex is flattened to a nozzle width. A knife edge is what you would draw
+    and not what any printer lays down, so modelling one would only be a claim
+    the part cannot keep - and it would leave OCC a degenerate edge to loft to.
+    """
+    t = params.features.trim_line
+    if not t.enabled:
+        return solid
+
+    # From the fillet's edge, so the bead does not move when the fillet resizes.
+    centre = params.mold.female_entry_blend_bottom.size + t.offset
+    tip = min(params.manufacturing.nozzle_diameter, t.width / 2.0)
+
+    def taper(half_base: float, half_tip: float) -> cq.Solid:
+        return _loft(
+            [_at_z(family.at(centre + half_tip), -t.height),
+             _at_z(family.at(centre + half_base), 0.0)],
+            ruled=True,     # a straight-sided section, not a splined one
+        )
+
+    ring = _checked(
+        taper(t.width / 2.0, tip / 2.0).cut(taper(-t.width / 2.0, -tip / 2.0)),
+        what="trim line ring", at_most=_volume(taper(t.width / 2.0, tip / 2.0)),
+    )
+    fused = _checked(solid.fuse(ring), what="trim line", at_least=_volume(solid))
+    return cq.Solid(_clean(fused).wrapped)
+
+
 def _corner_points(params, inset: float, diagonal: str, pattern: str):
     d = derive(params)
     x, y = d.plate_length / 2.0 - inset, d.plate_width / 2.0 - inset
@@ -599,6 +639,11 @@ def build(params, *, on_stage=None) -> MoldResult:
                 or params.mold.female_entry_blend_bottom.active):
             female = apply_female_entry_blend(female, female_family, params)
             done("female_entry_blend")
+        if params.features.trim_line.enabled:
+            # Before the holes: a clamp bore that crosses the bead should cut
+            # through it, not be filled in by it.
+            female = apply_trim_line(female, female_family, params)
+            done("trim_line")
 
     male, female = apply_features(male, female, params)
     f = params.features

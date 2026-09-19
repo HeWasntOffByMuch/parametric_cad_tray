@@ -72,6 +72,11 @@ CHANGES: dict[str, dict] = {
                                  "diagonal": "ne_sw", "size_x": 15.0, "size_y": 15.0,
                                  "depth": 8.0}
     },
+    "features.trim_line": {
+        # Loud on the female - a bead all the way round its parting face - and
+        # nothing at all on the male, which is the claim being tested.
+        "features.trim_line": {"enabled": True, "offset": 8.0, "width": 2.0, "height": 1.0}
+    },
     "manufacturing.pin_fit_clearance": {"manufacturing.pin_fit_clearance": 0.9},
     "mold.base_plate_thickness": {"mold.base_plate_thickness": 30.0},
     "mold.male_root_blend": {"mold.male_root_blend": {"kind": "none"}},
